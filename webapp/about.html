@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RouteTest - About</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        h1 {
+            color: #667eea;
+            margin-top: 0;
+        }
+        .nav {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .nav a {
+            margin-right: 15px;
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        .nav a:hover {
+            text-decoration: underline;
+        }
+        .section {
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>About RouteTest</h1>
+        
+        <div class="nav">
+            <a href="/">Home</a>
+            <a href="/about.html">About</a>
+            <a href="/test.html">Test Page</a>
+        </div>
+
+        <div class="section">
+            <h2>Purpose</h2>
+            <p>This is a test project created to troubleshoot and understand routing behavior in Azure Static Web Apps with integrated Azure Functions.</p>
+        </div>
+
+        <div class="section">
+            <h2>Architecture</h2>
+            <ul>
+                <li><strong>Frontend:</strong> Static HTML/CSS/JavaScript hosted in Azure SWA</li>
+                <li><strong>Backend:</strong> Azure Functions (PowerShell) for API endpoints</li>
+                <li><strong>Routing:</strong> Configured via staticwebapp.config.json</li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <h2>Test Scenarios</h2>
+            <ul>
+                <li>Simple GET requests to API endpoints</li>
+                <li>POST requests with JSON bodies</li>
+                <li>Query parameter handling</li>
+                <li>Route parameter handling</li>
+                <li>Error responses and status codes</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>
+

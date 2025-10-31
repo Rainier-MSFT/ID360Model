@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RouteTest - Test Page</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        h1 {
+            color: #667eea;
+            margin-top: 0;
+        }
+        .nav {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .nav a {
+            margin-right: 15px;
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        .nav a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Test Page</h1>
+        
+        <div class="nav">
+            <a href="/">Home</a>
+            <a href="/about.html">About</a>
+            <a href="/test.html">Test Page</a>
+        </div>
+
+        <p>This is a simple test page to verify static routing works correctly.</p>
+        <p>Current URL: <strong id="current-url"></strong></p>
+        <p>Page loaded at: <strong id="load-time"></strong></p>
+
+        <script>
+            document.getElementById('current-url').textContent = window.location.href;
+            document.getElementById('load-time').textContent = new Date().toLocaleString();
+        </script>
+    </div>
+</body>
+</html>
+

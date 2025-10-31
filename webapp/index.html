@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RouteTest - Home</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        h1 {
+            color: #667eea;
+            margin-top: 0;
+        }
+        .nav {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .nav a {
+            margin-right: 15px;
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        .nav a:hover {
+            text-decoration: underline;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 20px;
+            background: #f9f9f9;
+            border-radius: 5px;
+            border-left: 4px solid #667eea;
+        }
+        .test-button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
+        }
+        .test-button:hover {
+            background: #5568d3;
+        }
+        .result {
+            margin-top: 10px;
+            padding: 10px;
+            background: white;
+            border-radius: 3px;
+            font-family: monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .success {
+            border-left: 4px solid #4caf50;
+        }
+        .error {
+            border-left: 4px solid #f44336;
+        }
+        .info {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 RouteTest Project</h1>
+        
+        <div class="nav">
+            <a href="/">Home</a>
+            <a href="/about.html">About</a>
+            <a href="/test.html">Test Page</a>
+        </div>
+
+        <div class="info">
+            <strong>Project Info:</strong><br>
+            Subscription: c3332e69-d44b-4402-9467-ad70a23e02e5<br>
+            Resource Group: IAM-RA<br>
+            SWA: RouteTest<br>
+            Function App: RouteTestFA
+        </div>
+
+        <h2>API Endpoint Tests</h2>
+        
+        <div class="test-section">
+            <h3>Test 1: Simple GET Request</h3>
+            <button class="test-button" onclick="testSimpleGet()">Test /api/hello</button>
+            <div id="result-simple" class="result"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>Test 2: POST Request with Body</h3>
+            <button class="test-button" onclick="testPost()">Test /api/echo</button>
+            <div id="result-post" class="result"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>Test 3: Query Parameters</h3>
+            <button class="test-button" onclick="testQuery()">Test /api/query?name=Test</button>
+            <div id="result-query" class="result"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>Test 4: Route Parameters</h3>
+            <button class="test-button" onclick="testRoute()">Test /api/users/123</button>
+            <div id="result-route" class="result"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>Test 5: Error Handling</h3>
+            <button class="test-button" onclick="testError()">Test /api/error</button>
+            <div id="result-error" class="result"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>Test All</h3>
+            <button class="test-button" onclick="testAll()">Run All Tests</button>
+        </div>
+    </div>
+
+    <script>
+        async function makeRequest(url, options = {}) {
+            const startTime = Date.now();
+            try {
+                const response = await fetch(url, options);
+                const duration = Date.now() - startTime;
+                const contentType = response.headers.get('content-type');
+                let data;
+                
+                if (contentType && contentType.includes('application/json')) {
+                    data = await response.json();
+                } else {
+                    data = await response.text();
+                }
+                
+                return {
+                    success: response.ok,
+                    status: response.status,
+                    statusText: response.statusText,
+                    duration: duration,
+                    data: data,
+                    headers: Object.fromEntries(response.headers.entries())
+                };
+            } catch (error) {
+                const duration = Date.now() - startTime;
+                return {
+                    success: false,
+                    error: error.message,
+                    duration: duration
+                };
+            }
+        }
+
+        function displayResult(elementId, result) {
+            const element = document.getElementById(elementId);
+            element.textContent = JSON.stringify(result, null, 2);
+            element.className = result.success ? 'result success' : 'result error';
+        }
+
+        async function testSimpleGet() {
+            const result = await makeRequest('/api/hello');
+            displayResult('result-simple', result);
+        }
+
+        async function testPost() {
+            const result = await makeRequest('/api/echo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: 'Hello from client', timestamp: new Date().toISOString() })
+            });
+            displayResult('result-post', result);
+        }
+
+        async function testQuery() {
+            const result = await makeRequest('/api/query?name=Test&value=123');
+            displayResult('result-query', result);
+        }
+
+        async function testRoute() {
+            const result = await makeRequest('/api/users/123');
+            displayResult('result-route', result);
+        }
+
+        async function testError() {
+            const result = await makeRequest('/api/error');
+            displayResult('result-error', result);
+        }
+
+        async function testAll() {
+            await testSimpleGet();
+            await new Promise(resolve => setTimeout(resolve, 500));
+            await testPost();
+            await new Promise(resolve => setTimeout(resolve, 500));
+            await testQuery();
+            await new Promise(resolve => setTimeout(resolve, 500));
+            await testRoute();
+            await new Promise(resolve => setTimeout(resolve, 500));
+            await testError();
+        }
+    </script>
+</body>
+</html>
+

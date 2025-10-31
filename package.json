@@ -1,0 +1,21 @@
+{
+  "name": "routetest",
+  "version": "1.0.0",
+  "description": "Azure Static Web App routing test project",
+  "scripts": {
+    "start": "swa start webapp --api-location server",
+    "build": "echo No build step needed for static HTML",
+    "deploy": "swa deploy --app-location webapp --api-location server --env production"
+  },
+  "keywords": [
+    "azure",
+    "static-web-app",
+    "functions"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@azure/static-web-apps-cli": "^1.1.0"
+  }
+}
+
