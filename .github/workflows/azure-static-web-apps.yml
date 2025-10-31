@@ -33,8 +33,6 @@ jobs:
           app_location: "webapp"
           api_location: "server"
           output_location: ""
-          api_language: "powershell"
-          api_version: "7.4"
 
   close_pull_request_job:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
