@@ -140,10 +140,14 @@
     </div>
 
     <script>
+        const API_BASE_URL = 'https://routetestfa-hefcbxdyb2hwhcbe.westeurope-01.azurewebsites.net';
+        
         async function makeRequest(url, options = {}) {
+            // Prepend API base URL if it's a relative path
+            const fullUrl = url.startsWith('/') ? API_BASE_URL + url : url;
             const startTime = Date.now();
             try {
-                const response = await fetch(url, options);
+                const response = await fetch(fullUrl, options);
                 const duration = Date.now() - startTime;
                 const contentType = response.headers.get('content-type');
                 let data;
