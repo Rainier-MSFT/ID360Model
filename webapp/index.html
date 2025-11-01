@@ -134,6 +134,14 @@
         </div>
 
         <div class="test-section">
+            <h3>Test 6: Microsoft Graph User Lookup (RBAC Test)</h3>
+            <p style="font-size: 12px; color: #666;">Tests delegated vs app-only authentication with Microsoft Graph</p>
+            <input type="text" id="upnInput" placeholder="user@domain.com or 'me'" style="padding: 8px; margin-right: 10px; border: 1px solid #ddd; border-radius: 3px; width: 250px;" value="me">
+            <button class="test-button" onclick="testGetUser()">Test /api/user</button>
+            <div id="result-getuser" class="result"></div>
+        </div>
+
+        <div class="test-section">
             <h3>Test All</h3>
             <button class="test-button" onclick="testAll()">Run All Tests</button>
         </div>
@@ -209,6 +217,12 @@
         async function testError() {
             const result = await makeRequest('/api/error');
             displayResult('result-error', result);
+        }
+
+        async function testGetUser() {
+            const upn = document.getElementById('upnInput').value || 'me';
+            const result = await makeRequest(`/api/user/${upn}`);
+            displayResult('result-getuser', result);
         }
 
         async function testAll() {
