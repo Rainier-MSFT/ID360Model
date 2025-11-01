@@ -135,8 +135,12 @@
 
         <div class="test-section">
             <h3>Test 6: Microsoft Graph User Lookup (RBAC Test)</h3>
-            <p style="font-size: 12px; color: #666;">Tests delegated vs app-only authentication with Microsoft Graph</p>
-            <input type="text" id="upnInput" placeholder="user@domain.com or 'me'" style="padding: 8px; margin-right: 10px; border: 1px solid #ddd; border-radius: 3px; width: 250px;" value="me">
+            <p style="font-size: 12px; color: #666;">
+                Tests delegated vs app-only authentication with Microsoft Graph<br>
+                <strong>Note:</strong> Currently using app-only auth (UAMI). Enter a valid user UPN. 
+                Use 'me' only when EasyAuth is enabled for delegated auth.
+            </p>
+            <input type="text" id="upnInput" placeholder="user@yourdomain.com" style="padding: 8px; margin-right: 10px; border: 1px solid #ddd; border-radius: 3px; width: 250px;">
             <button class="test-button" onclick="testGetUser()">Test /api/user</button>
             <div id="result-getuser" class="result"></div>
         </div>

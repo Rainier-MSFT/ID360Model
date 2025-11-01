@@ -35,19 +35,50 @@ function Get-ManagedIdentityToken {
     Write-Log "Attempting to get UAMI token..."
     
     try {
-        # Get token using managed identity
-        $tokenResponse = Invoke-RestMethod `
-            -Uri "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://graph.microsoft.com/&client_id=$env:MANAGED_IDENTITY_CLIENT_ID" `
-            -Headers @{ Metadata = "true" } `
-            -Method GET
+        # Method 1: Try using managed identity HTTP endpoint
+        $tokenUri = "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://graph.microsoft.com/"
+        if ($env:MANAGED_IDENTITY_CLIENT_ID) {
+            $tokenUri += "&client_id=$env:MANAGED_IDENTITY_CLIENT_ID"
+        }
         
-        Write-Log "Successfully obtained UAMI token"
+        $tokenResponse = Invoke-RestMethod `
+            -Uri $tokenUri `
+            -Headers @{ Metadata = "true" } `
+            -Method GET `
+            -TimeoutSec 5
+        
+        Write-Log "Successfully obtained UAMI token via metadata endpoint"
         return @{
             token = $tokenResponse.access_token
             type = "managedIdentity"
         }
     } catch {
-        Write-Log "Failed to get UAMI token: $_"
+        Write-Log "Failed to get UAMI token via metadata: $_"
+        
+        # Method 2: Try using environment variable (Azure Functions can provide this)
+        try {
+            if ($env:MSI_ENDPOINT -and $env:MSI_SECRET) {
+                Write-Log "Trying MSI_ENDPOINT method..."
+                $tokenAuthURI = "$($env:MSI_ENDPOINT)?resource=https://graph.microsoft.com/&api-version=2019-08-01"
+                if ($env:MANAGED_IDENTITY_CLIENT_ID) {
+                    $tokenAuthURI += "&client_id=$env:MANAGED_IDENTITY_CLIENT_ID"
+                }
+                
+                $tokenResponse = Invoke-RestMethod `
+                    -Method Get `
+                    -Headers @{"X-IDENTITY-HEADER"=$env:MSI_SECRET} `
+                    -Uri $tokenAuthURI
+                
+                Write-Log "Successfully obtained UAMI token via MSI_ENDPOINT"
+                return @{
+                    token = $tokenResponse.access_token
+                    type = "managedIdentity_MSI"
+                }
+            }
+        } catch {
+            Write-Log "Failed MSI_ENDPOINT method: $_"
+        }
+        
         return $null
     }
 }
@@ -87,8 +118,9 @@ if (-not $userPrincipalName) {
     $userPrincipalName = $Request.Query.userPrincipalName
 }
 
-if (-not $userPrincipalName) {
-    $userPrincipalName = "me"  # Default to current user if no UPN specified
+# Default to "me" if no UPN specified
+if (-not $userPrincipalName -or $userPrincipalName -eq "") {
+    $userPrincipalName = "me"
 }
 
 $diagnostics = @{
@@ -131,6 +163,19 @@ if (-not $authInfo) {
 }
 
 $diagnostics.authMethod = $authInfo.type
+
+# Validate: "me" only works with delegated auth
+if ($userPrincipalName -eq "me" -and $authInfo.type -notlike "*delegated*") {
+    $diagnostics.error = "Cannot use 'me' with app-only authentication (UAMI). Please specify a user UPN like 'user@domain.com'"
+    $diagnostics.hint = "App-only auth requires explicit user UPN. Delegated auth would allow 'me'."
+    
+    Push-OutputBinding -Name Response -Value ([HttpResponseContext]@{
+        StatusCode = 400
+        Body = $diagnostics | ConvertTo-Json -Depth 10
+        Headers = @{ "Content-Type" = "application/json" }
+    })
+    return
+}
 
 # Call Microsoft Graph
 $graphUri = "https://graph.microsoft.com/v1.0/users/$userPrincipalName"
