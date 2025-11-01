@@ -68,6 +68,25 @@
             white-space: pre-wrap;
             max-height: 300px;
             overflow-y: auto;
+            position: relative;
+        }
+        .copy-btn {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 11px;
+        }
+        .copy-btn:hover {
+            background: #5568d3;
+        }
+        .copy-btn.copied {
+            background: #4caf50;
         }
         .success {
             border-left: 4px solid #4caf50;
@@ -191,7 +210,31 @@
 
         function displayResult(elementId, result) {
             const element = document.getElementById(elementId);
-            element.textContent = JSON.stringify(result, null, 2);
+            const jsonText = JSON.stringify(result, null, 2);
+            
+            // Clear previous content
+            element.innerHTML = '';
+            
+            // Add copy button
+            const copyBtn = document.createElement('button');
+            copyBtn.className = 'copy-btn';
+            copyBtn.textContent = 'Copy';
+            copyBtn.onclick = () => {
+                navigator.clipboard.writeText(jsonText).then(() => {
+                    copyBtn.textContent = 'Copied!';
+                    copyBtn.classList.add('copied');
+                    setTimeout(() => {
+                        copyBtn.textContent = 'Copy';
+                        copyBtn.classList.remove('copied');
+                    }, 2000);
+                });
+            };
+            element.appendChild(copyBtn);
+            
+            // Add result text
+            const textNode = document.createTextNode(jsonText);
+            element.appendChild(textNode);
+            
             element.className = result.success ? 'result success' : 'result error';
         }
 
