@@ -1,4 +1,4 @@
-# RouteTest - Azure Static Web App + Function App Testing Project
+# ID360Model - Azure Static Web App + Function App Testing Project
 
 This is a minimal test project designed to troubleshoot and verify routing behavior in Azure Static Web Apps with integrated Azure Functions.
 
@@ -6,13 +6,13 @@ This is a minimal test project designed to troubleshoot and verify routing behav
 
 - **Azure Subscription:** c3332e69-d44b-4402-9467-ad70a23e02e5
 - **Resource Group:** IAM-RA
-- **Static Web App:** RouteTest
-- **Function App:** RouteTestFA
+- **Static Web App:** ID360Model
+- **Function App:** ID360ModelFA
 
 ## Project Structure
 
 ```
-RouteTest/
+ID360Model/
 ├── webapp/                 # Static Web App frontend
 │   ├── index.html         # Main page with API tests
 │   ├── about.html         # About page
@@ -64,7 +64,7 @@ npm install -g @azure/static-web-apps-cli
 
 2. Start the development server:
 ```bash
-cd C:\Git\IAM_Tools\RouteTest
+cd C:\Git\IAM_Tools\ID360Model
 swa start webapp --api-location server
 ```
 
@@ -80,7 +80,7 @@ az login
 
 # Deploy Static Web App (first time)
 az staticwebapp create \
-  --name RouteTest \
+  --name ID360Model \
   --resource-group IAM-RA \
   --subscription c3332e69-d44b-4402-9467-ad70a23e02e5 \
   --location centralus \
