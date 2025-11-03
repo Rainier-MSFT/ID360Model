@@ -178,32 +178,41 @@
         // When SWA and FA are linked, use relative /api/* paths so SWA proxies requests and injects auth headers
         const API_BASE_URL = '';
         
-        // MSAL Configuration
-        const msalConfig = {
-            auth: {
-                clientId: '1ba30682-63f3-4b8f-9f8c-b477781bf3df', // ID360 app registration
-                authority: 'https://login.microsoftonline.com/2a15a8b5-49d1-49bc-b63c-c7c8c87bdc57',
-                redirectUri: window.location.origin
-            },
-            cache: {
-                cacheLocation: 'sessionStorage',
-                storeAuthStateInCookie: false
-            }
-        };
-
-        const msalInstance = new msal.PublicClientApplication(msalConfig);
-
         // Initialize MSAL
         let graphToken = null;
         let msalInitialized = false;
+        let msalInstance = null;
 
-        msalInstance.initialize().then(() => {
-            msalInitialized = true;
-            console.log('MSAL initialized');
-            // Try to acquire token silently on page load
-            acquireGraphToken();
-        }).catch(err => {
-            console.error('MSAL initialization failed:', err);
+        // Wait for MSAL library to load
+        window.addEventListener('load', function() {
+            if (typeof msal === 'undefined') {
+                console.error('MSAL library failed to load');
+                return;
+            }
+
+            // MSAL Configuration
+            const msalConfig = {
+                auth: {
+                    clientId: '1ba30682-63f3-4b8f-9f8c-b477781bf3df', // ID360 app registration
+                    authority: 'https://login.microsoftonline.com/2a15a8b5-49d1-49bc-b63c-c7c8c87bdc57',
+                    redirectUri: window.location.origin
+                },
+                cache: {
+                    cacheLocation: 'sessionStorage',
+                    storeAuthStateInCookie: false
+                }
+            };
+
+            msalInstance = new msal.PublicClientApplication(msalConfig);
+
+            msalInstance.initialize().then(() => {
+                msalInitialized = true;
+                console.log('✓ MSAL initialized successfully');
+                // Try to acquire token silently on page load
+                acquireGraphToken();
+            }).catch(err => {
+                console.error('MSAL initialization failed:', err);
+            });
         });
 
         // Acquire Microsoft Graph token
