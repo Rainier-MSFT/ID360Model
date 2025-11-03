@@ -214,22 +214,34 @@
                 return msalInstance.handleRedirectPromise();
             }).then((response) => {
                 if (response) {
-                    console.log('✓ MSAL redirect handled - token acquired');
+                    console.log('✓ MSAL redirect handled - token acquired from redirect callback');
                     graphToken = response.accessToken;
                     console.log('✓ Graph token ready (length:', graphToken.length, ')');
+                    console.log('✓ Account:', response.account.username);
+                    
+                    // Show success message to user
+                    setTimeout(() => {
+                        alert('✓ Graph token acquired successfully!\n\nYou can now test /api/user with "me" to see delegated authentication in action.');
+                    }, 500);
                 }
                 msalInitialized = true;
                 console.log('✓ MSAL initialized successfully');
                 
                 // Check if we already have a token from cache (don't auto-acquire)
                 const accounts = msalInstance.getAllAccounts();
+                console.log('MSAL accounts found:', accounts.length);
+                
                 if (accounts.length > 0 && !graphToken) {
-                    console.log('Found cached MSAL account, attempting silent token acquisition...');
-                    acquireGraphTokenSilent();
+                    console.log('Found cached MSAL account (' + accounts[0].username + '), attempting silent token acquisition...');
+                    acquireGraphTokenSilent().then(token => {
+                        if (token) {
+                            console.log('✓ Silent token acquisition successful - ready to use delegated calls');
+                        }
+                    });
                 } else if (graphToken) {
-                    console.log('✓ Ready to use delegated Graph calls');
+                    console.log('✓ Ready to use delegated Graph calls with token');
                 } else {
-                    console.log('No MSAL account cached. Click "Acquire Graph Token" button to get delegated token.');
+                    console.log('ℹ No MSAL account cached. Click "Acquire Graph Token" button to get delegated token.');
                 }
             }).catch(err => {
                 console.error('MSAL initialization failed:', err);
@@ -415,25 +427,42 @@
         }
 
         async function testGetUser() {
+            console.log('=== testGetUser called ===');
+            console.log('Current graphToken:', graphToken ? 'Present (length: ' + graphToken.length + ')' : 'NULL');
+            
             // Ensure we have a Graph token
             if (!graphToken) {
-                console.log('⚠ No Graph token available, acquiring...');
-                const token = await acquireGraphToken();
-                if (!token) {
-                    console.error('❌ Failed to acquire Graph token');
+                console.log('⚠ No Graph token in memory, attempting acquisition...');
+                
+                // First try silent acquisition if there's a cached account
+                const accounts = msalInstance ? msalInstance.getAllAccounts() : [];
+                if (accounts.length > 0) {
+                    console.log('Found MSAL account, trying silent acquisition...');
+                    const token = await acquireGraphTokenSilent();
+                    if (token) {
+                        console.log('✓ Silent token acquisition successful');
+                    } else {
+                        console.log('⚠ Silent acquisition failed, need to click "Acquire Graph Token" button first');
+                        displayResult('result-getuser', {
+                            success: false,
+                            error: 'No Graph token available. Please click the green "Acquire Graph Token" button first, then try again.'
+                        });
+                        return;
+                    }
+                } else {
+                    console.log('❌ No MSAL account found. Click "Acquire Graph Token" button first.');
                     displayResult('result-getuser', {
                         success: false,
-                        error: 'Failed to acquire Graph token. Check console for details.'
+                        error: 'No Graph token available. Please click the green "Acquire Graph Token" button first to authenticate.'
                     });
                     return;
                 }
-                console.log('✓ Graph token acquired');
             } else {
-                console.log('✓ Using cached Graph token');
+                console.log('✓ Using existing Graph token from memory');
             }
             
             const upn = document.getElementById('upnInput').value || 'me';
-            console.log(`Calling /api/user/${upn} with Graph token`);
+            console.log(`Calling /api/user/${upn} with Graph token (length: ${graphToken.length})`);
             const result = await makeRequest(`/api/user/${upn}`);
             displayResult('result-getuser', result);
         }
