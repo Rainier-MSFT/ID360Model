@@ -214,20 +214,60 @@
                 return msalInstance.handleRedirectPromise();
             }).then((response) => {
                 if (response) {
-                    console.log('✓ MSAL redirect handled:', response);
+                    console.log('✓ MSAL redirect handled - token acquired');
                     graphToken = response.accessToken;
+                    console.log('✓ Graph token ready (length:', graphToken.length, ')');
                 }
                 msalInitialized = true;
                 console.log('✓ MSAL initialized successfully');
-                // Try to acquire token silently on page load
-                acquireGraphToken();
+                
+                // Check if we already have a token from cache (don't auto-acquire)
+                const accounts = msalInstance.getAllAccounts();
+                if (accounts.length > 0 && !graphToken) {
+                    console.log('Found cached MSAL account, attempting silent token acquisition...');
+                    acquireGraphTokenSilent();
+                } else if (graphToken) {
+                    console.log('✓ Ready to use delegated Graph calls');
+                } else {
+                    console.log('No MSAL account cached. Click "Acquire Graph Token" button to get delegated token.');
+                }
             }).catch(err => {
                 console.error('MSAL initialization failed:', err);
                 msalInitialized = true; // Still mark as initialized to allow manual attempts
             });
         });
 
-        // Acquire Microsoft Graph token
+        // Silent token acquisition only (no redirects)
+        async function acquireGraphTokenSilent() {
+            if (!msalInitialized) {
+                console.log('MSAL not initialized yet');
+                return null;
+            }
+
+            const graphScopes = {
+                scopes: ['User.Read', 'User.ReadBasic.All']
+            };
+
+            try {
+                const accounts = msalInstance.getAllAccounts();
+                if (accounts.length > 0) {
+                    const request = {
+                        ...graphScopes,
+                        account: accounts[0]
+                    };
+                    
+                    const response = await msalInstance.acquireTokenSilent(request);
+                    graphToken = response.accessToken;
+                    console.log('✓ Graph token acquired silently');
+                    return graphToken;
+                }
+            } catch (error) {
+                console.log('Silent token acquisition failed (interaction may be required):', error.message);
+            }
+            return null;
+        }
+
+        // Acquire Microsoft Graph token (with redirect if needed)
         async function acquireGraphToken() {
             if (!msalInitialized) {
                 console.log('MSAL not initialized yet');
@@ -239,36 +279,34 @@
             };
 
             try {
-                // First, try to get account from cache (user already logged in via EasyAuth)
+                // First, try silent acquisition
                 const accounts = msalInstance.getAllAccounts();
                 
                 if (accounts.length > 0) {
-                    // Try silent token acquisition
                     const request = {
                         ...graphScopes,
                         account: accounts[0]
                     };
                     
-                    const response = await msalInstance.acquireTokenSilent(request);
-                    graphToken = response.accessToken;
-                    console.log('✓ Graph token acquired silently');
-                    return graphToken;
+                    try {
+                        const response = await msalInstance.acquireTokenSilent(request);
+                        graphToken = response.accessToken;
+                        console.log('✓ Graph token acquired silently');
+                        return graphToken;
+                    } catch (silentError) {
+                        // Silent failed, need interaction
+                        console.log('Silent acquisition failed, redirecting for authentication...');
+                        await msalInstance.acquireTokenRedirect(graphScopes);
+                        return null;
+                    }
                 } else {
-                    // No cached account, use redirect flow (more reliable than popup for SWA)
+                    // No cached account, use redirect flow
                     console.log('No cached account, redirecting for authentication...');
                     await msalInstance.acquireTokenRedirect(graphScopes);
-                    // Note: This will redirect away and return on callback
                     return null;
                 }
             } catch (error) {
                 console.error('Token acquisition failed:', error);
-                
-                // If silent acquisition fails, use redirect
-                if (error.name === 'InteractionRequiredAuthError') {
-                    console.log('Interaction required, redirecting for authentication...');
-                    await msalInstance.acquireTokenRedirect(graphScopes);
-                    return null;
-                }
                 return null;
             }
         }
