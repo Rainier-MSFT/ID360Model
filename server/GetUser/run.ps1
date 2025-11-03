@@ -13,22 +13,96 @@ function Write-Log {
 function Get-DelegatedTokenFromHeaders {
     param($Request)
     
-    # Try to get delegated token from EasyAuth headers
+    # Try to get delegated token from EasyAuth headers (multiple possible header names)
     $token = $Request.Headers['X-MS-TOKEN-AAD-ACCESS-TOKEN']
     if (-not $token) {
         $token = $Request.Headers['x-ms-token-aad-access-token']
     }
-    
-    if ($token) {
-        Write-Log "Found delegated token in headers"
-        return @{
-            token = [string]$token
-            type = "delegated"
+    if (-not $token) {
+        # SWA can pass token as x-ms-auth-token with "Bearer " prefix
+        $authHeader = $Request.Headers['x-ms-auth-token']
+        if ($authHeader) {
+            $token = $authHeader -replace '^Bearer\s+', ''
+        }
+    }
+    if (-not $token) {
+        $authHeader = $Request.Headers['X-MS-AUTH-TOKEN']
+        if ($authHeader) {
+            $token = $authHeader -replace '^Bearer\s+', ''
         }
     }
     
-    Write-Log "No delegated token found in headers"
-    return $null
+    if (-not $token) {
+        Write-Log "No delegated token found in headers"
+        return $null
+    }
+    
+    Write-Log "Found SWA auth token, attempting OBO exchange for Graph token..."
+    
+    # Exchange SWA token for Microsoft Graph token using On-Behalf-Of flow
+    $clientId = $env:AZURE_CLIENT_ID
+    $clientSecret = $env:AZURE_CLIENT_SECRET  
+    $tenantId = $env:AZURE_TENANT_ID
+    
+    if (-not $clientId -or -not $clientSecret -or -not $tenantId) {
+        Write-Log "Missing OBO credentials (AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, or AZURE_TENANT_ID)"
+        return @{
+            token = [string]$token
+            type = "delegated_noOBO"
+            warning = "SWA token found but cannot exchange for Graph token - missing OBO credentials"
+        }
+    }
+    
+    try {
+        $tokenEndpoint = "https://login.microsoftonline.com/$tenantId/oauth2/v2.0/token"
+        $body = @{
+            grant_type = "urn:ietf:params:oauth:grant-type:jwt-bearer"
+            client_id = $clientId
+            client_secret = $clientSecret
+            assertion = $token
+            scope = "https://graph.microsoft.com/.default"
+            requested_token_use = "on_behalf_of"
+        }
+        
+        $response = Invoke-RestMethod -Method Post -Uri $tokenEndpoint -Body $body -ContentType "application/x-www-form-urlencoded" -ErrorAction Stop
+        
+        if ($response.access_token) {
+            Write-Log "Successfully exchanged SWA token for Graph token via OBO"
+            return @{
+                token = $response.access_token
+                type = "delegated_OBO"
+            }
+        }
+    } catch {
+        $errorDetails = $null
+        $statusCode = $null
+        
+        # Try to extract detailed error from response
+        if ($_.ErrorDetails.Message) {
+            try {
+                $errorDetails = $_.ErrorDetails.Message | ConvertFrom-Json
+                $statusCode = $_.Exception.Response.StatusCode.value__
+            } catch {
+                $errorDetails = $_.ErrorDetails.Message
+            }
+        } else {
+            $errorDetails = $_.Exception.Message
+        }
+        
+        Write-Log "OBO token exchange failed: $errorDetails"
+        return @{
+            token = [string]$token
+            type = "delegated_OBOFailed"
+            error = $_.Exception.Message
+            errorDetails = $errorDetails
+            statusCode = $statusCode
+        }
+    }
+    
+    return @{
+        token = [string]$token
+        type = "delegated_noExchange"
+    }
 }
 
 function Get-ManagedIdentityToken {
@@ -128,11 +202,13 @@ $diagnostics = @{
     timestamp = (Get-Date).ToUniversalTime().ToString("o")
     userPrincipalName = $userPrincipalName
     headers = @{}
+    allHeaders = @()
 }
 
-# Capture relevant headers for diagnostics
+# Capture ALL headers for full diagnostics
 if ($Request.Headers) {
     $Request.Headers.Keys | ForEach-Object {
+        $diagnostics.allHeaders += $_
         if ($_ -like "*token*" -or $_ -like "*auth*" -or $_ -like "x-ms-*") {
             $value = $Request.Headers[$_]
             if ($value -and $value.ToString().Length -gt 50) {
@@ -140,6 +216,33 @@ if ($Request.Headers) {
             } else {
                 $diagnostics.headers[$_] = $value
             }
+        }
+    }
+}
+
+# Decode the x-ms-auth-token to see what's actually in it
+$authToken = $Request.Headers['x-ms-auth-token']
+if ($authToken) {
+    $tokenWithoutBearer = $authToken -replace '^Bearer\s+', ''
+    $parts = $tokenWithoutBearer.Split('.')
+    if ($parts.Length -ge 2) {
+        try {
+            # Decode JWT payload (second part)
+            $payload = $parts[1]
+            # Add padding if needed
+            while ($payload.Length % 4 -ne 0) { $payload += '=' }
+            $payloadBytes = [Convert]::FromBase64String($payload)
+            $payloadJson = [System.Text.Encoding]::UTF8.GetString($payloadBytes)
+            $tokenClaims = $payloadJson | ConvertFrom-Json
+            $diagnostics.tokenClaims = @{
+                aud = $tokenClaims.aud
+                iss = $tokenClaims.iss
+                appid = $tokenClaims.appid
+                azp = $tokenClaims.azp
+                idp = $tokenClaims.idp
+            }
+        } catch {
+            $diagnostics.tokenDecodeError = $_.Exception.Message
         }
     }
 }
@@ -163,6 +266,17 @@ if (-not $authInfo) {
 }
 
 $diagnostics.authMethod = $authInfo.type
+
+# Add OBO error/warning if present
+if ($authInfo.error) {
+    $diagnostics.oboError = $authInfo.error
+}
+if ($authInfo.errorDetails) {
+    $diagnostics.oboErrorDetails = $authInfo.errorDetails
+}
+if ($authInfo.warning) {
+    $diagnostics.oboWarning = $authInfo.warning
+}
 
 # Validate: "me" only works with delegated auth
 if ($userPrincipalName -eq "me" -and $authInfo.type -notlike "*delegated*") {
