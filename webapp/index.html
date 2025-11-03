@@ -159,9 +159,10 @@
             <p style="font-size: 12px; color: #666;">
                 Tests delegated authentication with Microsoft Graph using MSAL.js<br>
                 <strong>Expected:</strong> authMethod should be "delegated_MSAL" when Graph token is passed. 
-                Try 'me' to test true delegated auth!
+                Try 'me' to test true delegated auth!<br>
+                <strong>Note:</strong> First time will redirect for consent, then return here automatically.
             </p>
-            <button class="test-button" onclick="manuallyAcquireToken()" style="background: #4caf50;">Acquire Graph Token (MSAL)</button>
+            <button class="test-button" onclick="manuallyAcquireToken()" style="background: #4caf50;">Acquire Graph Token (MSAL - may redirect)</button>
             <br><br>
             <input type="text" id="upnInput" placeholder="me" style="padding: 8px; margin-right: 10px; border: 1px solid #ddd; border-radius: 3px; width: 250px;" value="me">
             <button class="test-button" onclick="testGetUser()">Test /api/user</button>
@@ -253,27 +254,20 @@
                     console.log('✓ Graph token acquired silently');
                     return graphToken;
                 } else {
-                    // No cached account, try popup
-                    console.log('No cached account, acquiring token via popup...');
-                    const response = await msalInstance.acquireTokenPopup(graphScopes);
-                    graphToken = response.accessToken;
-                    console.log('✓ Graph token acquired via popup');
-                    return graphToken;
+                    // No cached account, use redirect flow (more reliable than popup for SWA)
+                    console.log('No cached account, redirecting for authentication...');
+                    await msalInstance.acquireTokenRedirect(graphScopes);
+                    // Note: This will redirect away and return on callback
+                    return null;
                 }
             } catch (error) {
                 console.error('Token acquisition failed:', error);
                 
-                // If silent acquisition fails, try popup
+                // If silent acquisition fails, use redirect
                 if (error.name === 'InteractionRequiredAuthError') {
-                    try {
-                        const response = await msalInstance.acquireTokenPopup(graphScopes);
-                        graphToken = response.accessToken;
-                        console.log('✓ Graph token acquired via popup after silent failure');
-                        return graphToken;
-                    } catch (popupError) {
-                        console.error('Popup token acquisition failed:', popupError);
-                        return null;
-                    }
+                    console.log('Interaction required, redirecting for authentication...');
+                    await msalInstance.acquireTokenRedirect(graphScopes);
+                    return null;
                 }
                 return null;
             }
@@ -410,9 +404,10 @@
             console.log('Manually acquiring Graph token...');
             const token = await acquireGraphToken();
             if (token) {
-                alert('✓ Graph token acquired successfully!\nCheck console for details.');
+                alert('✓ Graph token acquired successfully!\nYou can now test /api/user with "me".');
             } else {
-                alert('✗ Failed to acquire Graph token.\nCheck console for error details.');
+                // Token might be null if redirect was triggered - that's expected
+                console.log('Token acquisition initiated (may have redirected for consent)');
             }
         }
 
