@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ID360Model - Home</title>
+    <!-- MSAL.js for Microsoft Graph token acquisition -->
+    <script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -153,12 +155,14 @@
         </div>
 
         <div class="test-section">
-            <h3>Test 6: Microsoft Graph User Lookup (RBAC Test)</h3>
+            <h3>Test 6: Microsoft Graph User Lookup (RBAC Test with MSAL)</h3>
             <p style="font-size: 12px; color: #666;">
-                Tests delegated vs app-only authentication with Microsoft Graph<br>
-                <strong>Expected:</strong> authMethod should be "delegated" when calling through SWA proxy. 
-                Try 'me' for delegated, or specific UPN for app-only fallback.
+                Tests delegated authentication with Microsoft Graph using MSAL.js<br>
+                <strong>Expected:</strong> authMethod should be "delegated_MSAL" when Graph token is passed. 
+                Try 'me' to test true delegated auth!
             </p>
+            <button class="test-button" onclick="manuallyAcquireToken()" style="background: #4caf50;">Acquire Graph Token (MSAL)</button>
+            <br><br>
             <input type="text" id="upnInput" placeholder="me" style="padding: 8px; margin-right: 10px; border: 1px solid #ddd; border-radius: 3px; width: 250px;" value="me">
             <button class="test-button" onclick="testGetUser()">Test /api/user</button>
             <div id="result-getuser" class="result"></div>
@@ -174,9 +178,100 @@
         // When SWA and FA are linked, use relative /api/* paths so SWA proxies requests and injects auth headers
         const API_BASE_URL = '';
         
+        // MSAL Configuration
+        const msalConfig = {
+            auth: {
+                clientId: '1ba30682-63f3-4b8f-9f8c-b477781bf3df', // ID360 app registration
+                authority: 'https://login.microsoftonline.com/2a15a8b5-49d1-49bc-b63c-c7c8c87bdc57',
+                redirectUri: window.location.origin
+            },
+            cache: {
+                cacheLocation: 'sessionStorage',
+                storeAuthStateInCookie: false
+            }
+        };
+
+        const msalInstance = new msal.PublicClientApplication(msalConfig);
+
+        // Initialize MSAL
+        let graphToken = null;
+        let msalInitialized = false;
+
+        msalInstance.initialize().then(() => {
+            msalInitialized = true;
+            console.log('MSAL initialized');
+            // Try to acquire token silently on page load
+            acquireGraphToken();
+        }).catch(err => {
+            console.error('MSAL initialization failed:', err);
+        });
+
+        // Acquire Microsoft Graph token
+        async function acquireGraphToken() {
+            if (!msalInitialized) {
+                console.log('MSAL not initialized yet');
+                return null;
+            }
+
+            const graphScopes = {
+                scopes: ['User.Read', 'User.ReadBasic.All']
+            };
+
+            try {
+                // First, try to get account from cache (user already logged in via EasyAuth)
+                const accounts = msalInstance.getAllAccounts();
+                
+                if (accounts.length > 0) {
+                    // Try silent token acquisition
+                    const request = {
+                        ...graphScopes,
+                        account: accounts[0]
+                    };
+                    
+                    const response = await msalInstance.acquireTokenSilent(request);
+                    graphToken = response.accessToken;
+                    console.log('✓ Graph token acquired silently');
+                    return graphToken;
+                } else {
+                    // No cached account, try popup
+                    console.log('No cached account, acquiring token via popup...');
+                    const response = await msalInstance.acquireTokenPopup(graphScopes);
+                    graphToken = response.accessToken;
+                    console.log('✓ Graph token acquired via popup');
+                    return graphToken;
+                }
+            } catch (error) {
+                console.error('Token acquisition failed:', error);
+                
+                // If silent acquisition fails, try popup
+                if (error.name === 'InteractionRequiredAuthError') {
+                    try {
+                        const response = await msalInstance.acquireTokenPopup(graphScopes);
+                        graphToken = response.accessToken;
+                        console.log('✓ Graph token acquired via popup after silent failure');
+                        return graphToken;
+                    } catch (popupError) {
+                        console.error('Popup token acquisition failed:', popupError);
+                        return null;
+                    }
+                }
+                return null;
+            }
+        }
+        
         async function makeRequest(url, options = {}) {
             // Use relative path to leverage SWA-to-FA proxying with auth token injection
             const fullUrl = url.startsWith('/') ? API_BASE_URL + url : url;
+            
+            // Add Graph token to headers if available
+            if (graphToken) {
+                options.headers = options.headers || {};
+                options.headers['X-Graph-Token'] = graphToken;
+                console.log('✓ Adding Graph token to request');
+            } else {
+                console.log('⚠ No Graph token available, will use UAMI fallback');
+            }
+            
             const startTime = Date.now();
             try {
                 const response = await fetch(fullUrl, options);
@@ -268,9 +363,25 @@
         }
 
         async function testGetUser() {
+            // Ensure we have a Graph token
+            if (!graphToken) {
+                console.log('Acquiring Graph token before API call...');
+                await acquireGraphToken();
+            }
+            
             const upn = document.getElementById('upnInput').value || 'me';
             const result = await makeRequest(`/api/user/${upn}`);
             displayResult('result-getuser', result);
+        }
+        
+        async function manuallyAcquireToken() {
+            console.log('Manually acquiring Graph token...');
+            const token = await acquireGraphToken();
+            if (token) {
+                alert('✓ Graph token acquired successfully!\nCheck console for details.');
+            } else {
+                alert('✗ Failed to acquire Graph token.\nCheck console for error details.');
+            }
         }
 
         async function testAll() {

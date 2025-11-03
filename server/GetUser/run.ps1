@@ -247,10 +247,28 @@ if ($authToken) {
     }
 }
 
-# Try to get token (delegated first, then UAMI fallback)
-$authInfo = Get-DelegatedTokenFromHeaders -Request $Request
-if (-not $authInfo) {
-    $authInfo = Get-ManagedIdentityToken
+# Try to get token in priority order:
+# 1. X-Graph-Token from MSAL (true delegated Graph token)
+# 2. x-ms-auth-token from SWA (attempt OBO exchange)
+# 3. UAMI fallback (app-only)
+
+$graphTokenFromMSAL = $Request.Headers['X-Graph-Token']
+if (-not $graphTokenFromMSAL) {
+    $graphTokenFromMSAL = $Request.Headers['x-graph-token']
+}
+
+if ($graphTokenFromMSAL) {
+    Write-Log "Found Graph token from MSAL in X-Graph-Token header"
+    $authInfo = @{
+        token = [string]$graphTokenFromMSAL
+        type = "delegated_MSAL"
+    }
+} else {
+    # Fall back to OBO or UAMI
+    $authInfo = Get-DelegatedTokenFromHeaders -Request $Request
+    if (-not $authInfo) {
+        $authInfo = Get-ManagedIdentityToken
+    }
 }
 
 if (-not $authInfo) {
