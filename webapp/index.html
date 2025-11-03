@@ -234,10 +234,16 @@
 
             // Handle redirect response (for popup/redirect flow)
             msalInstance.initialize().then(() => {
+                console.log('MSAL instance initialized, calling handleRedirectPromise...');
+                console.log('Current URL:', window.location.href);
+                console.log('Has hash?', window.location.hash ? 'YES' : 'NO');
+                console.log('Has query?', window.location.search ? 'YES' : 'NO');
                 return msalInstance.handleRedirectPromise();
             }).then((response) => {
+                console.log('handleRedirectPromise returned:', response ? 'RESPONSE OBJECT' : 'NULL');
                 if (response) {
                     console.log('✓ MSAL redirect handled - token acquired from redirect callback');
+                    console.log('Response object keys:', Object.keys(response));
                     graphToken = response.accessToken;
                     console.log('✓ Graph token ready (length:', graphToken.length, ')');
                     console.log('✓ Account:', response.account.username);
@@ -247,6 +253,8 @@
                     setTimeout(() => {
                         alert('✓ Graph token acquired successfully!\n\nYou can now test /api/user with "me" to see delegated authentication in action.');
                     }, 500);
+                } else {
+                    console.log('⚠ handleRedirectPromise returned null - no redirect response detected');
                 }
                 msalInitialized = true;
                 console.log('✓ MSAL initialized successfully');
