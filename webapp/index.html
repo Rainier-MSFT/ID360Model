@@ -114,12 +114,15 @@
             <a href="/test.html">Test Page</a>
         </div>
 
+        <!-- User Info & Role Display -->
+        <div id="userInfoDisplay"></div>
+
         <div class="info">
             <strong>Project Info:</strong><br>
             Subscription: c3332e69-d44b-4402-9467-ad70a23e02e5<br>
             Resource Group: IAM-RA<br>
-            SWA: RouteTest<br>
-            Function App: RouteTestFA
+            SWA: ID360Model-SWA<br>
+            Function App: ID360Model-FA
         </div>
 
         <h2>API Endpoint Tests</h2>
@@ -176,6 +179,44 @@
             <h3>Test All</h3>
             <button class="test-button" onclick="testAll()">Run All Tests</button>
         </div>
+
+        <h2 style="margin-top: 40px;">🔐 Role-Based Access Control (RBAC) Tests</h2>
+
+        <!-- Admin Only Section -->
+        <div class="test-section" data-role="Admin" style="border-left-color: #dc3545;">
+            <h3>👨‍💼 Admin Only Section</h3>
+            <p><strong>Required Role:</strong> <span style="background: #dc3545; color: white; padding: 2px 6px; border-radius: 3px;">Admin</span></p>
+            <p>This section is only visible to users with the <strong>Admin</strong> role.</p>
+            <button class="test-button" onclick="testAdminFunction()">Test Admin API (/api/admin/config)</button>
+            <div id="result-admin" class="result"></div>
+        </div>
+
+        <!-- Auditor Section -->
+        <div class="test-section" data-role="Auditor,Admin" style="border-left-color: #28a745;">
+            <h3>📊 Auditor Section</h3>
+            <p><strong>Required Role:</strong> <span style="background: #28a745; color: white; padding: 2px 6px; border-radius: 3px;">Auditor</span> or <span style="background: #dc3545; color: white; padding: 2px 6px; border-radius: 3px;">Admin</span></p>
+            <p>This section is visible to <strong>Auditors</strong> and <strong>Admins</strong>.</p>
+            <button class="test-button" onclick="testAuditLogs()">View Audit Logs</button>
+            <div id="result-audit" class="result"></div>
+        </div>
+
+        <!-- Service Desk Section -->
+        <div class="test-section" data-role="SvcDeskAnalyst,Admin" style="border-left-color: #ffc107;">
+            <h3>🎧 Service Desk Section</h3>
+            <p><strong>Required Role:</strong> <span style="background: #ffc107; color: black; padding: 2px 6px; border-radius: 3px;">SvcDeskAnalyst</span> or <span style="background: #dc3545; color: white; padding: 2px 6px; border-radius: 3px;">Admin</span></p>
+            <p>This section is visible to <strong>Service Desk Analysts</strong> and <strong>Admins</strong>.</p>
+            <button class="test-button" onclick="testSvcDeskFunction()">Issue Temporary Access Pass</button>
+            <div id="result-svcdesk" class="result"></div>
+        </div>
+
+        <!-- All Authenticated Users -->
+        <div class="test-section" style="border-left-color: #667eea;">
+            <h3>👥 All Users Section</h3>
+            <p><strong>Required Role:</strong> <span style="background: #667eea; color: white; padding: 2px 6px; border-radius: 3px;">Any Authenticated User</span></p>
+            <p>This section is visible to all authenticated users regardless of role.</p>
+            <button class="test-button" onclick="testUserInfo()">Get My User Info</button>
+            <div id="result-userinfo" class="result"></div>
+        </div>
     </div>
 
     <script>
@@ -186,6 +227,129 @@
         let graphToken = null;
         let msalInitialized = false;
         let msalInstance = null;
+        
+        // =========================================
+        // RBAC (Role-Based Access Control) Module
+        // =========================================
+        let userInfo = null;
+        let userRoles = [];
+        
+        // Fetch user information including roles from SWA
+        async function fetchUserInfo() {
+            try {
+                const response = await fetch('/.auth/me');
+                const data = await response.json();
+                
+                if (data && data.clientPrincipal) {
+                    userInfo = data.clientPrincipal;
+                    userRoles = userInfo.userRoles || [];
+                    
+                    console.log('✓ User authenticated:', userInfo.userDetails);
+                    console.log('✓ User roles:', userRoles);
+                    
+                    updateUserInfoDisplay();
+                    applyRoleBasedUI();
+                    
+                    return userInfo;
+                } else {
+                    console.warn('No user principal found - user may not be authenticated');
+                    return null;
+                }
+            } catch (error) {
+                console.error('Error fetching user info:', error);
+                return null;
+            }
+        }
+        
+        // Check if user has a specific role
+        function hasRole(role) {
+            return userRoles.includes(role);
+        }
+        
+        // Check if user has ANY of the specified roles
+        function hasAnyRole(roles) {
+            return roles.some(role => userRoles.includes(role));
+        }
+        
+        // Check if user has ALL of the specified roles
+        function hasAllRoles(roles) {
+            return roles.every(role => userRoles.includes(role));
+        }
+        
+        // Update user info display
+        function updateUserInfoDisplay() {
+            const userDisplayEl = document.getElementById('userInfoDisplay');
+            if (!userDisplayEl) return;
+            
+            if (userInfo) {
+                const rolesList = userRoles.join(', ') || 'No roles assigned';
+                const roleBadges = userRoles.map(role => {
+                    let color = '#667eea';
+                    if (role === 'Admin') color = '#dc3545';
+                    if (role === 'Auditor') color = '#28a745';
+                    if (role === 'SvcDeskAnalyst') color = '#ffc107';
+                    
+                    return `<span style="background: ${color}; color: white; padding: 3px 8px; border-radius: 3px; margin: 0 5px; font-size: 11px; font-weight: bold;">${role}</span>`;
+                }).join('');
+                
+                userDisplayEl.innerHTML = `
+                    <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0;">
+                        <strong>👤 Signed in as:</strong> ${userInfo.userDetails}<br>
+                        <strong>🔐 Roles:</strong> ${roleBadges}
+                    </div>
+                `;
+            }
+        }
+        
+        // Apply role-based UI (show/hide elements)
+        function applyRoleBasedUI() {
+            // Show/hide sections based on roles
+            document.querySelectorAll('[data-role]').forEach(element => {
+                const requiredRoles = element.getAttribute('data-role').split(',').map(r => r.trim());
+                const hasAccess = hasAnyRole(requiredRoles);
+                
+                if (hasAccess) {
+                    element.style.display = '';
+                    element.classList.remove('role-hidden');
+                } else {
+                    element.style.display = 'none';
+                    element.classList.add('role-hidden');
+                }
+            });
+            
+            // Show/hide buttons based on roles
+            document.querySelectorAll('[data-require-role]').forEach(element => {
+                const requiredRoles = element.getAttribute('data-require-role').split(',').map(r => r.trim());
+                const hasAccess = hasAnyRole(requiredRoles);
+                
+                if (hasAccess) {
+                    element.disabled = false;
+                    element.style.opacity = '1';
+                    element.title = '';
+                } else {
+                    element.disabled = true;
+                    element.style.opacity = '0.5';
+                    element.title = `Requires role: ${requiredRoles.join(' or ')}`;
+                }
+            });
+        }
+        
+        // Get role-based greeting
+        function getRoleGreeting() {
+            if (hasRole('Admin')) {
+                return '👨‍💼 Administrator Dashboard';
+            } else if (hasRole('Auditor')) {
+                return '📊 Auditor Dashboard';
+            } else if (hasRole('SvcDeskAnalyst')) {
+                return '🎧 Service Desk Console';
+            } else {
+                return '🏠 User Dashboard';
+            }
+        }
+        
+        // =========================================
+        // End RBAC Module
+        // =========================================
         
         // Update token status UI
         function updateTokenStatus() {
@@ -284,6 +448,9 @@
                 }
                 msalInitialized = true;
                 console.log('✓ MSAL initialized successfully');
+                
+                // Fetch user roles and apply RBAC
+                fetchUserInfo();
                 
                 // Check if we already have a token from cache (don't auto-acquire)
                 const accounts = msalInstance.getAllAccounts();
@@ -561,6 +728,123 @@
             await testRoute();
             await new Promise(resolve => setTimeout(resolve, 500));
             await testError();
+        }
+
+        // ==================================
+        // RBAC Test Functions
+        // ==================================
+
+        async function testAdminFunction() {
+            console.log('=== testAdminFunction called ===');
+            
+            if (!hasRole('Admin')) {
+                displayResult('result-admin', {
+                    success: false,
+                    error: 'Access Denied: Requires Admin role',
+                    yourRoles: userRoles
+                });
+                return;
+            }
+            
+            try {
+                const result = await makeRequest('/api/admin/config');
+                displayResult('result-admin', result);
+            } catch (error) {
+                displayResult('result-admin', {
+                    success: false,
+                    error: error.message
+                });
+            }
+        }
+
+        async function testAuditLogs() {
+            console.log('=== testAuditLogs called ===');
+            
+            if (!hasAnyRole(['Auditor', 'Admin'])) {
+                displayResult('result-audit', {
+                    success: false,
+                    error: 'Access Denied: Requires Auditor or Admin role',
+                    yourRoles: userRoles
+                });
+                return;
+            }
+            
+            try {
+                // Simulated audit log data
+                const result = {
+                    success: true,
+                    message: 'Audit logs retrieved successfully',
+                    logs: [
+                        { timestamp: new Date().toISOString(), user: userInfo.userDetails, action: 'Login', result: 'Success' },
+                        { timestamp: new Date(Date.now() - 3600000).toISOString(), user: userInfo.userDetails, action: 'View Dashboard', result: 'Success' }
+                    ],
+                    role: userRoles.includes('Admin') ? 'Admin' : 'Auditor'
+                };
+                displayResult('result-audit', result);
+            } catch (error) {
+                displayResult('result-audit', {
+                    success: false,
+                    error: error.message
+                });
+            }
+        }
+
+        async function testSvcDeskFunction() {
+            console.log('=== testSvcDeskFunction called ===');
+            
+            if (!hasAnyRole(['SvcDeskAnalyst', 'Admin'])) {
+                displayResult('result-svcdesk', {
+                    success: false,
+                    error: 'Access Denied: Requires SvcDeskAnalyst or Admin role',
+                    yourRoles: userRoles
+                });
+                return;
+            }
+            
+            try {
+                // Simulated TAP issuance
+                const result = {
+                    success: true,
+                    message: 'Temporary Access Pass issued successfully',
+                    tap: {
+                        code: 'TAP-' + Math.random().toString(36).substr(2, 9).toUpperCase(),
+                        validFor: '8 hours',
+                        issuedBy: userInfo.userDetails,
+                        issuedAt: new Date().toISOString()
+                    },
+                    role: userRoles.includes('Admin') ? 'Admin' : 'SvcDeskAnalyst'
+                };
+                displayResult('result-svcdesk', result);
+            } catch (error) {
+                displayResult('result-svcdesk', {
+                    success: false,
+                    error: error.message
+                });
+            }
+        }
+
+        async function testUserInfo() {
+            console.log('=== testUserInfo called ===');
+            
+            try {
+                const result = {
+                    success: true,
+                    userInfo: {
+                        identity: userInfo.userDetails,
+                        identityProvider: userInfo.identityProvider,
+                        userId: userInfo.userId,
+                        claims: userInfo.claims,
+                        roles: userRoles
+                    },
+                    message: 'User information retrieved successfully'
+                };
+                displayResult('result-userinfo', result);
+            } catch (error) {
+                displayResult('result-userinfo', {
+                    success: false,
+                    error: error.message
+                });
+            }
         }
     </script>
 </body>

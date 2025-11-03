@@ -45,3 +45,5 @@ logs/
 
 
 .envbackups/
+backups/
+.env
