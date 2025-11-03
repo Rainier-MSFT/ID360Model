@@ -162,6 +162,9 @@
                 Try 'me' to test true delegated auth!<br>
                 <strong>Note:</strong> First time will redirect for consent, then return here automatically.
             </p>
+            <div id="tokenStatus" style="padding: 10px; margin: 10px 0; background: #f5f5f5; border-radius: 5px; font-size: 12px;">
+                Token Status: <span id="tokenStatusText">Loading...</span>
+            </div>
             <button class="test-button" onclick="manuallyAcquireToken()" style="background: #4caf50;">Acquire Graph Token (MSAL - may redirect)</button>
             <br><br>
             <input type="text" id="upnInput" placeholder="me" style="padding: 8px; margin-right: 10px; border: 1px solid #ddd; border-radius: 3px; width: 250px;" value="me">
@@ -183,6 +186,26 @@
         let graphToken = null;
         let msalInitialized = false;
         let msalInstance = null;
+        
+        // Update token status UI
+        function updateTokenStatus() {
+            const statusEl = document.getElementById('tokenStatusText');
+            if (!statusEl) return;
+            
+            if (graphToken) {
+                statusEl.innerHTML = '<span style="color: green; font-weight: bold;">✓ Token Available (length: ' + graphToken.length + ')</span>';
+                statusEl.parentElement.style.background = '#d4edda';
+            } else {
+                const accounts = msalInstance ? msalInstance.getAllAccounts() : [];
+                if (accounts.length > 0) {
+                    statusEl.innerHTML = '<span style="color: orange;">⚠ Account cached (' + accounts[0].username + ') but no token in memory. Try clicking "Acquire Graph Token".</span>';
+                    statusEl.parentElement.style.background = '#fff3cd';
+                } else {
+                    statusEl.innerHTML = '<span style="color: red;">✗ No token. Click "Acquire Graph Token" button.</span>';
+                    statusEl.parentElement.style.background = '#f8d7da';
+                }
+            }
+        }
 
         // Wait for MSAL library to load
         window.addEventListener('load', function() {
@@ -218,6 +241,7 @@
                     graphToken = response.accessToken;
                     console.log('✓ Graph token ready (length:', graphToken.length, ')');
                     console.log('✓ Account:', response.account.username);
+                    updateTokenStatus();
                     
                     // Show success message to user
                     setTimeout(() => {
@@ -236,12 +260,18 @@
                     acquireGraphTokenSilent().then(token => {
                         if (token) {
                             console.log('✓ Silent token acquisition successful - ready to use delegated calls');
+                            updateTokenStatus();
+                        } else {
+                            console.log('⚠ Silent acquisition did not return token');
+                            updateTokenStatus();
                         }
                     });
                 } else if (graphToken) {
                     console.log('✓ Ready to use delegated Graph calls with token');
+                    updateTokenStatus();
                 } else {
                     console.log('ℹ No MSAL account cached. Click "Acquire Graph Token" button to get delegated token.');
+                    updateTokenStatus();
                 }
             }).catch(err => {
                 console.error('MSAL initialization failed:', err);
