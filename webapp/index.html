@@ -195,23 +195,34 @@
                 auth: {
                     clientId: '1ba30682-63f3-4b8f-9f8c-b477781bf3df', // ID360 app registration
                     authority: 'https://login.microsoftonline.com/2a15a8b5-49d1-49bc-b63c-c7c8c87bdc57',
-                    redirectUri: window.location.origin
+                    redirectUri: window.location.href.split('?')[0] // Remove query params
                 },
                 cache: {
                     cacheLocation: 'sessionStorage',
                     storeAuthStateInCookie: false
+                },
+                system: {
+                    allowRedirectInIframe: true
                 }
             };
 
             msalInstance = new msal.PublicClientApplication(msalConfig);
 
+            // Handle redirect response (for popup/redirect flow)
             msalInstance.initialize().then(() => {
+                return msalInstance.handleRedirectPromise();
+            }).then((response) => {
+                if (response) {
+                    console.log('✓ MSAL redirect handled:', response);
+                    graphToken = response.accessToken;
+                }
                 msalInitialized = true;
                 console.log('✓ MSAL initialized successfully');
                 // Try to acquire token silently on page load
                 acquireGraphToken();
             }).catch(err => {
                 console.error('MSAL initialization failed:', err);
+                msalInitialized = true; // Still mark as initialized to allow manual attempts
             });
         });
 
@@ -276,7 +287,7 @@
             if (graphToken) {
                 options.headers = options.headers || {};
                 options.headers['X-Graph-Token'] = graphToken;
-                console.log('✓ Adding Graph token to request');
+                console.log('✓ Adding Graph token to request (length:', graphToken.length, ')');
             } else {
                 console.log('⚠ No Graph token available, will use UAMI fallback');
             }
@@ -374,11 +385,23 @@
         async function testGetUser() {
             // Ensure we have a Graph token
             if (!graphToken) {
-                console.log('Acquiring Graph token before API call...');
-                await acquireGraphToken();
+                console.log('⚠ No Graph token available, acquiring...');
+                const token = await acquireGraphToken();
+                if (!token) {
+                    console.error('❌ Failed to acquire Graph token');
+                    displayResult('result-getuser', {
+                        success: false,
+                        error: 'Failed to acquire Graph token. Check console for details.'
+                    });
+                    return;
+                }
+                console.log('✓ Graph token acquired');
+            } else {
+                console.log('✓ Using cached Graph token');
             }
             
             const upn = document.getElementById('upnInput').value || 'me';
+            console.log(`Calling /api/user/${upn} with Graph token`);
             const result = await makeRequest(`/api/user/${upn}`);
             displayResult('result-getuser', result);
         }
