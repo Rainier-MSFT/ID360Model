@@ -219,7 +219,7 @@
                 auth: {
                     clientId: '1ba30682-63f3-4b8f-9f8c-b477781bf3df', // ID360 app registration
                     authority: 'https://login.microsoftonline.com/2a15a8b5-49d1-49bc-b63c-c7c8c87bdc57',
-                    redirectUri: window.location.href.split('?')[0] // Remove query params
+                    redirectUri: window.location.origin + '/redirect.html' // Dedicated redirect page
                 },
                 cache: {
                     cacheLocation: 'sessionStorage',
@@ -234,19 +234,34 @@
 
             // Handle redirect response (for popup/redirect flow)
             msalInstance.initialize().then(() => {
-                console.log('MSAL instance initialized, calling handleRedirectPromise...');
+                console.log('MSAL instance initialized on main page');
                 console.log('Current URL:', window.location.href);
-                console.log('Has hash?', window.location.hash ? 'YES' : 'NO');
-                console.log('Has query?', window.location.search ? 'YES' : 'NO');
                 
-                // Check if we attempted a redirect previously
-                const redirectAttempted = sessionStorage.getItem('msalRedirectAttempted');
-                const redirectTime = sessionStorage.getItem('msalRedirectTime');
-                if (redirectAttempted) {
-                    console.log('🔄 MSAL redirect was attempted at:', redirectTime);
-                    console.log('🔄 But URL has no hash/query - redirect response may have been stripped!');
+                // Check if redirect.html successfully acquired a token
+                const tokenFromRedirect = sessionStorage.getItem('msalGraphToken');
+                const tokenAcquired = sessionStorage.getItem('msalTokenAcquired');
+                const accountUsername = sessionStorage.getItem('msalAccountUsername');
+                
+                if (tokenAcquired === 'true' && tokenFromRedirect) {
+                    console.log('✓ Token acquired via redirect.html!');
+                    console.log('✓ Account:', accountUsername);
+                    console.log('✓ Token length:', tokenFromRedirect.length);
+                    
+                    graphToken = tokenFromRedirect;
+                    
+                    // Clean up
+                    sessionStorage.removeItem('msalGraphToken');
+                    sessionStorage.removeItem('msalTokenAcquired');
+                    sessionStorage.removeItem('msalAccountUsername');
                     sessionStorage.removeItem('msalRedirectAttempted');
                     sessionStorage.removeItem('msalRedirectTime');
+                    
+                    updateTokenStatus();
+                    
+                    // Show success message
+                    setTimeout(() => {
+                        alert('✓ Graph token acquired successfully via dedicated redirect page!\n\nAccount: ' + accountUsername + '\n\nYou can now test /api/user with "me" to see delegated authentication in action.');
+                    }, 500);
                 }
                 
                 return msalInstance.handleRedirectPromise();

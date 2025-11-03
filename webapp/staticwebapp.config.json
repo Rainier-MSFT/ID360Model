@@ -2,6 +2,10 @@
   "$schema": "https://json.schemastore.org/staticwebapp.config.json",
   "routes": [
     {
+      "route": "/redirect.html",
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
       "route": "/api/*",
       "allowedRoles": ["authenticated"]
     },
@@ -16,7 +20,7 @@
   ],
   "navigationFallback": {
     "rewrite": "/index.html",
-    "exclude": ["/api/*", "/.auth/*"]
+    "exclude": ["/api/*", "/.auth/*", "/redirect.html"]
   },
   "responseOverrides": {
     "400": {

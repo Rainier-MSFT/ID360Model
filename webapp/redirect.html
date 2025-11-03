@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Redirecting...</title>
+    <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.3/lib/msal-browser.min.js"></script>
+</head>
+<body>
+    <div style="text-align: center; padding: 50px; font-family: Arial, sans-serif;">
+        <h2>Processing authentication...</h2>
+        <p>Please wait while we complete your sign-in.</p>
+    </div>
+
+    <script>
+        console.log('=== REDIRECT PAGE LOADED ===');
+        console.log('Current URL:', window.location.href);
+        console.log('Has hash?', window.location.hash ? 'YES - ' + window.location.hash.substring(0, 50) : 'NO');
+        console.log('Has query?', window.location.search ? 'YES - ' + window.location.search.substring(0, 50) : 'NO');
+
+        // MSAL Configuration (must match main page)
+        const msalConfig = {
+            auth: {
+                clientId: '1ba30682-63f3-4b8f-9f8c-b477781bf3df',
+                authority: 'https://login.microsoftonline.com/2a15a8b5-49d1-49bc-b63c-c7c8c87bdc57',
+                redirectUri: window.location.origin + '/redirect.html'
+            },
+            cache: {
+                cacheLocation: 'sessionStorage',
+                storeAuthStateInCookie: false
+            }
+        };
+
+        const msalInstance = new msal.PublicClientApplication(msalConfig);
+
+        msalInstance.initialize().then(() => {
+            console.log('MSAL initialized on redirect page');
+            return msalInstance.handleRedirectPromise();
+        }).then((response) => {
+            console.log('handleRedirectPromise result:', response ? 'SUCCESS' : 'NULL');
+            
+            if (response) {
+                console.log('✓ Token acquired via redirect!');
+                console.log('Account:', response.account.username);
+                console.log('Token length:', response.accessToken.length);
+                
+                // Store token temporarily for main page to pick up
+                sessionStorage.setItem('msalGraphToken', response.accessToken);
+                sessionStorage.setItem('msalTokenAcquired', 'true');
+                sessionStorage.setItem('msalAccountUsername', response.account.username);
+                
+                // Redirect back to main page
+                console.log('Redirecting back to main page...');
+                window.location.href = '/';
+            } else {
+                console.error('❌ No response from handleRedirectPromise on redirect page');
+                console.error('This means the hash/query was stripped even on this dedicated page!');
+                
+                // Still go back to main page
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 2000);
+            }
+        }).catch((error) => {
+            console.error('Error handling redirect:', error);
+            setTimeout(() => {
+                window.location.href = '/';
+            }, 2000);
+        });
+    </script>
+</body>
+</html>
+
