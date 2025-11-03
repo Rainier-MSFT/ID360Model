@@ -364,7 +364,7 @@
                     // No cached account, use redirect flow
                     console.log('No cached account, redirecting for authentication...');
                     console.log('Current URL before redirect:', window.location.href);
-                    console.log('Redirect URI configured:', msalConfig.auth.redirectUri);
+                    console.log('Redirect URI will be:', window.location.href.split('?')[0].split('#')[0]);
                     console.log('Scopes requested:', JSON.stringify(graphScopes));
                     
                     // Store a flag to detect if redirect happened
