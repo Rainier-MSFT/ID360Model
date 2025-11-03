@@ -220,6 +220,52 @@ if ($Request.Headers) {
     }
 }
 
+# ================================
+# RBAC: Validate User Roles
+# ================================
+$clientPrincipalHeader = $Request.Headers['x-ms-client-principal']
+if ($clientPrincipalHeader) {
+    try {
+        $clientPrincipalJson = [System.Text.Encoding]::UTF8.GetString(
+            [Convert]::FromBase64String($clientPrincipalHeader)
+        )
+        $clientPrincipal = $clientPrincipalJson | ConvertFrom-Json
+        $userRoles = $clientPrincipal.userRoles
+        $diagnostics.userRoles = $userRoles
+        $diagnostics.userIdentity = $clientPrincipal.userDetails
+        
+        Write-Log "User: $($clientPrincipal.userDetails), Roles: $($userRoles -join ', ')"
+        
+        # Check if user has required role (Admin, Auditor, or SvcDeskAnalyst)
+        $allowedRoles = @("Admin", "Auditor", "SvcDeskAnalyst")
+        $hasValidRole = $false
+        foreach ($role in $userRoles) {
+            if ($allowedRoles -contains $role) {
+                $hasValidRole = $true
+                break
+            }
+        }
+        
+        if (-not $hasValidRole) {
+            Write-Log "❌ Access Denied: User does not have required role"
+            $diagnostics.error = "Forbidden"
+            $diagnostics.message = "This endpoint requires one of the following roles: Admin, Auditor, or SvcDeskAnalyst"
+            $diagnostics.requiredRoles = $allowedRoles
+            
+            Push-OutputBinding -Name Response -Value ([HttpResponseContext]@{
+                StatusCode = [HttpStatusCode]::Forbidden
+                Body = ($diagnostics | ConvertTo-Json -Depth 10)
+                Headers = @{ 'Content-Type' = 'application/json' }
+            })
+            return
+        }
+        
+        Write-Log "✓ User has valid role for this endpoint"
+    } catch {
+        Write-Log "⚠ Could not parse client principal: $_"
+    }
+}
+
 # Decode the x-ms-auth-token to see what's actually in it
 $authToken = $Request.Headers['x-ms-auth-token']
 if ($authToken) {
