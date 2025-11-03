@@ -238,6 +238,17 @@
                 console.log('Current URL:', window.location.href);
                 console.log('Has hash?', window.location.hash ? 'YES' : 'NO');
                 console.log('Has query?', window.location.search ? 'YES' : 'NO');
+                
+                // Check if we attempted a redirect previously
+                const redirectAttempted = sessionStorage.getItem('msalRedirectAttempted');
+                const redirectTime = sessionStorage.getItem('msalRedirectTime');
+                if (redirectAttempted) {
+                    console.log('🔄 MSAL redirect was attempted at:', redirectTime);
+                    console.log('🔄 But URL has no hash/query - redirect response may have been stripped!');
+                    sessionStorage.removeItem('msalRedirectAttempted');
+                    sessionStorage.removeItem('msalRedirectTime');
+                }
+                
                 return msalInstance.handleRedirectPromise();
             }).then((response) => {
                 console.log('handleRedirectPromise returned:', response ? 'RESPONSE OBJECT' : 'NULL');
@@ -352,7 +363,16 @@
                 } else {
                     // No cached account, use redirect flow
                     console.log('No cached account, redirecting for authentication...');
+                    console.log('Current URL before redirect:', window.location.href);
+                    console.log('Redirect URI configured:', msalConfig.auth.redirectUri);
+                    console.log('Scopes requested:', JSON.stringify(graphScopes));
+                    
+                    // Store a flag to detect if redirect happened
+                    sessionStorage.setItem('msalRedirectAttempted', 'true');
+                    sessionStorage.setItem('msalRedirectTime', new Date().toISOString());
+                    
                     await msalInstance.acquireTokenRedirect(graphScopes);
+                    console.log('⚠ This line should NEVER appear - redirect should have happened');
                     return null;
                 }
             } catch (error) {
