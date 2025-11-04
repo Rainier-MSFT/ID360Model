@@ -46,11 +46,18 @@ try {
     # ALSO extract custom app roles from claims array (where Azure AD puts them)
     if ($clientPrincipal.claims) {
         Write-Host "Extracting roles from claims array..."
-        $roleClaims = $clientPrincipal.claims | Where-Object { $_.typ -eq 'roles' }
+        # Azure AD can use different claim types:
+        # - "roles" (short form)
+        # - "http://schemas.microsoft.com/ws/2008/06/identity/claims/role" (long form)
+        $roleClaims = $clientPrincipal.claims | Where-Object { 
+            $_.typ -eq 'roles' -or 
+            $_.typ -eq 'http://schemas.microsoft.com/ws/2008/06/identity/claims/role' -or
+            $_.typ -like '*role*'
+        }
         foreach ($claim in $roleClaims) {
             if ($claim.val -and $userRoles -notcontains $claim.val) {
                 $userRoles += $claim.val
-                Write-Host "  ✓ Added role from claims: $($claim.val)"
+                Write-Host "  ✓ Added role from claims ($($claim.typ)): $($claim.val)"
             }
         }
     }

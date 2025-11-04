@@ -249,11 +249,18 @@
                     // ALSO extract custom roles from claims array (where Azure AD puts app roles)
                     if (userInfo.claims && Array.isArray(userInfo.claims)) {
                         console.log('📋 Extracting roles from claims array...');
-                        const roleClaims = userInfo.claims.filter(claim => claim.typ === 'roles');
+                        // Azure AD can use different claim types for roles:
+                        // - "roles" (short form)
+                        // - "http://schemas.microsoft.com/ws/2008/06/identity/claims/role" (long form)
+                        const roleClaims = userInfo.claims.filter(claim => 
+                            claim.typ === 'roles' || 
+                            claim.typ === 'http://schemas.microsoft.com/ws/2008/06/identity/claims/role' ||
+                            claim.typ.toLowerCase().includes('role')
+                        );
                         roleClaims.forEach(claim => {
                             if (claim.val && !userRoles.includes(claim.val)) {
                                 userRoles.push(claim.val);
-                                console.log(`  ✓ Added role from claims: ${claim.val}`);
+                                console.log(`  ✓ Added role from claims (${claim.typ}): ${claim.val}`);
                             }
                         });
                     }
