@@ -12,16 +12,11 @@
           "loginParameters": ["response_type=code id_token", "scope=openid profile email"]
         }
       }
-    },
-    "rolesSource": "/api/GetRoles"
+    }
   },
   "routes": [
     {
       "route": "/redirect.html",
-      "allowedRoles": ["anonymous", "authenticated"]
-    },
-    {
-      "route": "/api/GetRoles",
       "allowedRoles": ["anonymous", "authenticated"]
     },
     {

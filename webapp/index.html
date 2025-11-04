@@ -242,10 +242,24 @@
                 
                 if (data && data.clientPrincipal) {
                     userInfo = data.clientPrincipal;
+                    
+                    // Extract roles from userRoles array (default SWA behavior)
                     userRoles = userInfo.userRoles || [];
                     
+                    // ALSO extract custom roles from claims array (where Azure AD puts app roles)
+                    if (userInfo.claims && Array.isArray(userInfo.claims)) {
+                        console.log('📋 Extracting roles from claims array...');
+                        const roleClaims = userInfo.claims.filter(claim => claim.typ === 'roles');
+                        roleClaims.forEach(claim => {
+                            if (claim.val && !userRoles.includes(claim.val)) {
+                                userRoles.push(claim.val);
+                                console.log(`  ✓ Added role from claims: ${claim.val}`);
+                            }
+                        });
+                    }
+                    
                     console.log('✓ User authenticated:', userInfo.userDetails);
-                    console.log('✓ User roles:', userRoles);
+                    console.log('✓ Final user roles:', userRoles);
                     
                     updateUserInfoDisplay();
                     applyRoleBasedUI();
