@@ -8,7 +8,7 @@
       "methods": [
         "get"
       ],
-      "route": "admin"
+      "route": "config/admin"
     },
     {
       "type": "http",
