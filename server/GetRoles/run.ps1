@@ -21,9 +21,25 @@ try {
             )
             $clientPrincipal = $clientPrincipalJson | ConvertFrom-Json
             
-            if ($clientPrincipal.userRoles) {
-                $roles = $clientPrincipal.userRoles
-                Write-Host "Roles from client principal: $($roles -join ', ')"
+            Write-Host "Client principal parsed successfully"
+            
+            # Extract roles from claims array (where typ == "roles")
+            if ($clientPrincipal.claims) {
+                Write-Host "Found claims array with $($clientPrincipal.claims.Count) claims"
+                
+                $roleClaims = $clientPrincipal.claims | Where-Object { $_.typ -eq "roles" }
+                if ($roleClaims) {
+                    foreach ($roleClaim in $roleClaims) {
+                        $roles += $roleClaim.val
+                        Write-Host "Found role claim: $($roleClaim.val)"
+                    }
+                }
+            }
+            
+            # Also check userRoles array (legacy fallback)
+            if ($roles.Count -eq 0 -and $clientPrincipal.userRoles) {
+                $roles = $clientPrincipal.userRoles | Where-Object { $_ -ne "authenticated" -and $_ -ne "anonymous" }
+                Write-Host "Roles from userRoles array: $($roles -join ', ')"
             }
         } catch {
             Write-Host "Error parsing client principal: $_"
