@@ -237,6 +237,24 @@ if ($clientPrincipalHeader) {
             $userRoles = @($clientPrincipal.userRoles)
         }
         
+        # WORKAROUND: SWA linked backends don't pass full claims array
+        # Get roles from frontend via custom header (frontend extracts from /.auth/me)
+        $frontendRolesHeader = $Request.Headers['X-User-Roles']
+        if ($frontendRolesHeader) {
+            Write-Log "Found X-User-Roles header from frontend"
+            try {
+                $frontendRoles = $frontendRolesHeader | ConvertFrom-Json
+                foreach ($role in $frontendRoles) {
+                    if ($role -and $userRoles -notcontains $role) {
+                        $userRoles += $role
+                        Write-Log "  Added role from frontend: $role"
+                    }
+                }
+            } catch {
+                Write-Log "ERROR parsing X-User-Roles: $_"
+            }
+        }
+        
         # ALSO extract custom app roles from claims array (where Azure AD puts them)
         if ($clientPrincipal.claims) {
             Write-Log "Extracting roles from claims array..."

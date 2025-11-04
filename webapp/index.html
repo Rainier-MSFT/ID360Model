@@ -597,6 +597,14 @@
                 console.log('⚠ No Graph token available, will use UAMI fallback');
             }
             
+            // WORKAROUND: SWA linked backends don't receive full claims array
+            // Send user roles from frontend (already extracted from /.auth/me which DOES have claims)
+            if (userRoles && userRoles.length > 0) {
+                options.headers = options.headers || {};
+                options.headers['X-User-Roles'] = JSON.stringify(userRoles);
+                console.log('✓ Adding user roles to request:', JSON.stringify(userRoles));
+            }
+            
             const startTime = Date.now();
             try {
                 const response = await fetch(fullUrl, options);
