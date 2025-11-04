@@ -20,14 +20,6 @@
       "allowedRoles": ["anonymous", "authenticated"]
     },
     {
-      "route": "/api/admin/*",
-      "allowedRoles": ["Admin"]
-    },
-    {
-      "route": "/api/user/*",
-      "allowedRoles": ["Admin", "Auditor", "SvcDeskAnalyst"]
-    },
-    {
       "route": "/api/*",
       "allowedRoles": ["authenticated"]
     },

@@ -230,11 +230,29 @@ if ($clientPrincipalHeader) {
             [Convert]::FromBase64String($clientPrincipalHeader)
         )
         $clientPrincipal = $clientPrincipalJson | ConvertFrom-Json
-        $userRoles = $clientPrincipal.userRoles
+        
+        # Extract roles from userRoles array (default SWA)
+        $userRoles = @()
+        if ($clientPrincipal.userRoles) {
+            $userRoles = @($clientPrincipal.userRoles)
+        }
+        
+        # ALSO extract custom app roles from claims array (where Azure AD puts them)
+        if ($clientPrincipal.claims) {
+            Write-Log "Extracting roles from claims array..."
+            $roleClaims = $clientPrincipal.claims | Where-Object { $_.typ -eq 'roles' }
+            foreach ($claim in $roleClaims) {
+                if ($claim.val -and $userRoles -notcontains $claim.val) {
+                    $userRoles += $claim.val
+                    Write-Log "  ✓ Added role from claims: $($claim.val)"
+                }
+            }
+        }
+        
         $diagnostics.userRoles = $userRoles
         $diagnostics.userIdentity = $clientPrincipal.userDetails
         
-        Write-Log "User: $($clientPrincipal.userDetails), Roles: $($userRoles -join ', ')"
+        Write-Log "User: $($clientPrincipal.userDetails), Final roles: $($userRoles -join ', ')"
         
         # Check if user has required role (Admin, Auditor, or SvcDeskAnalyst)
         $allowedRoles = @("Admin", "Auditor", "SvcDeskAnalyst")

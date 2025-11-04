@@ -37,11 +37,28 @@ try {
     )
     $clientPrincipal = $clientPrincipalJson | ConvertFrom-Json
     
-    $userRoles = $clientPrincipal.userRoles
+    # Extract roles from userRoles array (default SWA)
+    $userRoles = @()
+    if ($clientPrincipal.userRoles) {
+        $userRoles = @($clientPrincipal.userRoles)
+    }
+    
+    # ALSO extract custom app roles from claims array (where Azure AD puts them)
+    if ($clientPrincipal.claims) {
+        Write-Host "Extracting roles from claims array..."
+        $roleClaims = $clientPrincipal.claims | Where-Object { $_.typ -eq 'roles' }
+        foreach ($claim in $roleClaims) {
+            if ($claim.val -and $userRoles -notcontains $claim.val) {
+                $userRoles += $claim.val
+                Write-Host "  ✓ Added role from claims: $($claim.val)"
+            }
+        }
+    }
+    
     $userIdentity = $clientPrincipal.userDetails
     
     Write-Host "User: $userIdentity"
-    Write-Host "Roles: $($userRoles -join ', ')"
+    Write-Host "Final roles: $($userRoles -join ', ')"
     
     # Store in response for transparency
     $responseBody.user = $userIdentity
