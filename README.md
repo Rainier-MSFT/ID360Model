@@ -6,369 +6,280 @@ A proof-of-concept project demonstrating advanced authentication patterns in Azu
 - **Hybrid authentication** (delegated + managed identity fallback)
 - **Secure token passing** patterns for SWA linked backends
 
-## Project Information
+## Quick Start
 
-- **Azure Subscription:** c3332e69-d44b-4402-9467-ad70a23e02e5
+### Live Demo
+🌐 **URL:** https://happy-ocean-02b2c0403.3.azurestaticapps.net
+
+Sign in with your Azure AD account to test:
+- Role-based UI sections (Admin, Auditor, SvcDeskAnalyst)
+- MSAL.js token acquisition via dedicated redirect page
+- Microsoft Graph user lookups with delegated permissions
+
+### Azure Resources
+- **Subscription:** c3332e69-d44b-4402-9467-ad70a23e02e5
 - **Resource Group:** IAM-RA
 - **Static Web App:** ID360Model-SWA
 - **Function App:** ID360Model-FA
 - **App Registration:** ID360 (1ba30682-63f3-4b8f-9f8c-b477781bf3df)
-- **SWA URL:** https://happy-ocean-02b2c0403.3.azurestaticapps.net
-
-## Key Features
-
-✅ **RBAC Implementation** - Role-based access control using Azure AD app roles  
-✅ **Delegated Auth** - Microsoft Graph calls on behalf of signed-in user  
-✅ **MSAL.js Integration** - Client-side token acquisition with dedicated redirect page  
-✅ **Hybrid Authentication** - Graceful fallback from delegated to managed identity  
-✅ **Secure Architecture** - Custom header pattern for SWA linked backends  
-✅ **Production Ready** - Comprehensive error handling and logging  
 
 ## Project Structure
 
 ```
 ID360Model/
-├── webapp/                           # Static Web App frontend
+├── webapp/
 │   ├── index.html                   # Main app with MSAL + RBAC
 │   ├── redirect.html                # MSAL redirect handler (CRITICAL!)
-│   └── staticwebapp.config.json    # SWA configuration & routes
-├── server/                          # Azure Functions backend (PowerShell 7.4)
-│   ├── GetUser/                    # Microsoft Graph user lookup
-│   │   ├── function.json           # Route: GET /api/user/{upn}
-│   │   └── run.ps1                 # RBAC + delegated/UAMI Graph calls
-│   ├── AdminConfig/                # Admin-only configuration endpoint
-│   │   ├── function.json           # Route: GET /api/config/admin
-│   │   └── run.ps1                 # RBAC: Admin role required
-│   ├── host.json                   # Function App configuration
-│   ├── requirements.psd1           # PowerShell dependencies
-│   └── profile.ps1                 # PowerShell profile & helpers
-├── DOCUMENTATION-DELEGATED-AUTH-SOLUTION.md  # Delegated auth guide (1,491 lines)
-├── RBAC-IMPLEMENTATION-COMPLETE.md           # RBAC implementation (2,101 lines)
-├── RISKS-AND-MITIGATIONS.md                  # Security analysis
-├── .gitignore
+│   └── staticwebapp.config.json     # SWA configuration & routes
+├── server/
+│   ├── GetUser/                     # GET /api/user/{upn} - Graph lookup
+│   ├── AdminConfig/                 # GET /api/config/admin - Admin only
+│   ├── host.json
+│   ├── profile.ps1
+│   └── requirements.psd1
+├── DOCUMENTATION-DELEGATED-AUTH-SOLUTION.md  # 1,491 lines
+├── RBAC-IMPLEMENTATION-COMPLETE.md           # 2,101 lines
+├── RISKS-AND-MITIGATIONS.md
 └── README.md
 ```
 
+## Key Features
+
+| Feature | Implementation | Documentation |
+|---------|---------------|---------------|
+| **RBAC** | Custom `X-User-Roles` header workaround | [RBAC-IMPLEMENTATION-COMPLETE.md](RBAC-IMPLEMENTATION-COMPLETE.md) |
+| **Delegated Auth** | MSAL.js + dedicated redirect page | [DOCUMENTATION-DELEGATED-AUTH-SOLUTION.md](DOCUMENTATION-DELEGATED-AUTH-SOLUTION.md) |
+| **Hybrid Auth** | Delegated → UAMI fallback | Both documents |
+| **Security** | Threat modeling & mitigations | [RISKS-AND-MITIGATIONS.md](RISKS-AND-MITIGATIONS.md) |
+
+## Architecture
+
+### Authentication Flow
+```
+User → SWA EasyAuth → MSAL.js Token → Role Extraction
+                          ↓
+    API Request (X-Graph-Token + X-User-Roles headers)
+                          ↓
+              Backend RBAC Validation
+                          ↓
+        Microsoft Graph (delegated or UAMI)
+```
+
+### RBAC Roles
+| Role | Access | Endpoint |
+|------|--------|----------|
+| **Admin** | Full access | All endpoints |
+| **Auditor** | Read-only | `/api/user/*` only |
+| **SvcDeskAnalyst** | Service desk | `/api/user/*` only |
+
+💡 **System supports unlimited roles** - see [RBAC guide](RBAC-IMPLEMENTATION-COMPLETE.md#appendix-b-adding-new-roles) for adding more.
+
+### Critical Design Patterns
+
+1. **Dedicated Redirect Page** (`/redirect.html`)
+   - **Why:** SWA strips URL fragments, breaking MSAL OAuth flow
+   - **Solution:** Dedicated page excluded from navigation fallback
+   - **Details:** [URL Stripping Discovery](DOCUMENTATION-DELEGATED-AUTH-SOLUTION.md#phase-5-url-stripping-discovery)
+
+2. **Custom Headers**
+   - `X-Graph-Token` - Passes MSAL token to backend
+   - `X-User-Roles` - Workaround for missing claims array in linked backends
+   - **Details:** [Token Passing](DOCUMENTATION-DELEGATED-AUTH-SOLUTION.md#6-token-passing-strategy)
+
+3. **Client-Side Role Extraction**
+   - **Why:** SWA linked backends don't receive full claims array
+   - **Solution:** Frontend extracts from `/.auth/me`, passes via header
+   - **Details:** [Platform Limitation](RBAC-IMPLEMENTATION-COMPLETE.md#the-platform-limitation)
+
 ## API Endpoints
 
-### GET /api/user/{upn}
-**Description:** Looks up a user in Microsoft Graph  
-**Authentication:** Delegated (with managed identity fallback)  
-**RBAC:** Requires Admin, Auditor, or SvcDeskAnalyst role  
-**Special Cases:**
-- `upn=me` - Returns current signed-in user's profile
-- Uses `X-Graph-Token` header for delegated calls
-- Falls back to UAMI if no delegated token provided
+### `GET /api/user/{upn}`
+Microsoft Graph user lookup with delegated permissions
 
-**Example:**
+**RBAC:** Admin | Auditor | SvcDeskAnalyst  
+**Special:** `upn=me` returns signed-in user
+
 ```bash
 GET /api/user/john.doe@example.com
-X-Graph-Token: eyJ0eXAiOiJKV1QiLCJub25jZSI6...
+X-Graph-Token: eyJ0eXAiOiJKV1Qi...
 X-User-Roles: ["authenticated","Admin"]
 ```
 
-### GET /api/config/admin
-**Description:** Returns admin configuration data  
-**Authentication:** Required via SWA EasyAuth  
-**RBAC:** Requires Admin role only  
-**Returns:** System configuration, feature flags, statistics
+### `GET /api/config/admin`
+Admin configuration endpoint
 
-**Example:**
+**RBAC:** Admin only  
+**Returns:** System config, feature flags, statistics
+
 ```bash
 GET /api/config/admin
 X-User-Roles: ["authenticated","Admin"]
 ```
 
-## Architecture Overview
-
-### Authentication Flow
-
-```
-User Browser
-    ↓
-1. SWA EasyAuth (Azure AD)
-    ↓
-2. MSAL.js acquires Graph token
-    ↓
-3. Frontend extracts roles from /.auth/me
-    ↓
-4. API call with custom headers:
-   - X-Graph-Token (for delegated Graph calls)
-   - X-User-Roles (for RBAC)
-    ↓
-5. Backend validates authentication & roles
-    ↓
-6. Call Microsoft Graph (delegated or UAMI)
-```
-
-### RBAC Roles
-
-The system supports three Azure AD app roles:
-
-| Role | Description | Access Level |
-|------|-------------|--------------|
-| **Admin** | Full administrative access | All endpoints |
-| **Auditor** | Read-only audit access | User lookup only |
-| **SvcDeskAnalyst** | Service desk operations | User lookup only |
-
-**Note:** The system supports unlimited custom roles. See `RBAC-IMPLEMENTATION-COMPLETE.md` for how to add more.
-
-### Key Design Patterns
-
-1. **Dedicated Redirect Page** - `/redirect.html` handles MSAL OAuth callback without SWA URL stripping
-2. **Custom Headers** - `X-Graph-Token` and `X-User-Roles` pass data to linked backend
-3. **Hybrid Authentication** - Graceful fallback from delegated to managed identity
-4. **Client-Side Role Extraction** - Workaround for SWA linked backend limitation
-
 ## Local Development
 
-### Prerequisites
-- Azure Functions Core Tools
-- PowerShell 7.4+
-- Node.js (for Static Web Apps CLI)
-- Azure AD tenant with ID360 app registration
-- Assigned app roles in Azure AD
-
-### Running Locally
-
-1. Install Azure Static Web Apps CLI:
 ```bash
+# Install prerequisites
 npm install -g @azure/static-web-apps-cli
-```
 
-2. Start the development server:
-```bash
+# Start dev server
 cd C:\Git\IAM_Tools\ID360Model
 swa start webapp --api-location server
+
+# Open http://localhost:4280
 ```
 
-3. Open browser to `http://localhost:4280`
-
-**Note:** Local development uses emulated authentication. For full MSAL/RBAC testing, deploy to Azure.
+⚠️ **Note:** Local dev uses emulated auth. For full MSAL/RBAC testing, deploy to Azure.
 
 ## Deployment
 
-### Using Azure CLI
-
+### Quick Deploy (Azure CLI)
 ```bash
-# Login to Azure
-az login
-
-# Deploy Static Web App (first time)
 az staticwebapp create \
   --name ID360Model-SWA \
   --resource-group IAM-RA \
   --subscription c3332e69-d44b-4402-9467-ad70a23e02e5 \
-  --location centralus \
   --sku Standard \
-  --source https://github.com/YOUR_REPO \
-  --branch main \
+  --location centralus \
   --app-location "webapp" \
-  --api-location "server" \
-  --output-location ""
-
-# Link existing Function App (if needed)
-az staticwebapp backends link \
-  --name ID360Model-SWA \
-  --resource-group IAM-RA \
-  --backend-resource-id /subscriptions/c3332e69-d44b-4402-9467-ad70a23e02e5/resourceGroups/IAM-RA/providers/Microsoft.Web/sites/ID360Model-FA \
-  --backend-region ukwest
+  --api-location "server"
 ```
 
-### Using GitHub Actions
+### GitHub Actions
+Auto-deploys on push to `main` branch (workflow created by SWA).
 
-The Static Web App automatically creates a GitHub Actions workflow when connected to a repository. The workflow deploys on every push to the main branch.
-
-**Important Configuration:**
+**Configuration:**
 - App location: `webapp`
-- API location: `server` (if deploying integrated)
+- API location: `server`
 - Output location: (empty)
 
-### Manual Deployment
+## Configuration Quick Reference
 
-Deploy using the SWA CLI:
-```bash
-swa deploy --app-location webapp --api-location server --env production
+### Required Azure AD Setup
+1. **Redirect URI:** `https://{your-swa}.azurestaticapps.net/redirect.html` ⚠️
+2. **Token claims:** Include `roles` in ID token
+3. **App roles:** Define Admin, Auditor, SvcDeskAnalyst
+4. **API permissions:** `User.Read` (delegated), `User.Read.All` (application)
+
+### Required Function App Settings
+- `AZURE_CLIENT_ID` - App registration client ID
+- `AZURE_CLIENT_SECRET` - Client secret
+- `AZURE_TENANT_ID` - Tenant ID
+- **UAMI:** ID360-UAMI with Graph `User.Read.All` permission
+
+### Key staticwebapp.config.json Rules
+```json
+{
+  "routes": [
+    { "route": "/redirect.html", "allowedRoles": ["anonymous", "authenticated"] },
+    { "route": "/api/*", "allowedRoles": ["authenticated"] }
+  ],
+  "navigationFallback": {
+    "exclude": ["/redirect.html"]  // CRITICAL!
+  }
+}
 ```
+
+📘 **Full configuration details:** See [Configuration sections](RBAC-IMPLEMENTATION-COMPLETE.md#configuration-files) in documentation.
 
 ## Testing
 
-Open the deployed Static Web App URL: https://happy-ocean-02b2c0403.3.azurestaticapps.net
+### Test the Live App
+1. Sign in at https://happy-ocean-02b2c0403.3.azurestaticapps.net
+2. Check browser console for role extraction logs
+3. Test based on your assigned role:
+   - **Admin:** All sections visible, all endpoints accessible
+   - **Auditor:** User lookup only
+   - **No roles:** 403 on all endpoints
 
-The home page includes comprehensive interactive tests:
+### Verification Checklist
+- [ ] User info displays with correct roles
+- [ ] MSAL token acquisition succeeds (check console)
+- [ ] `X-User-Roles` header present in Network tab
+- [ ] `X-Graph-Token` header present for Graph calls
+- [ ] Backend logs show role extraction
 
-### Authentication Tests
-1. **User Info** - Displays signed-in user and extracted roles
-2. **Acquire Graph Token** - Tests MSAL.js token acquisition via redirect.html
+📘 **Detailed testing procedures:** See [Testing & Validation](DOCUMENTATION-DELEGATED-AUTH-SOLUTION.md#testing--validation) and [Manual Testing](RBAC-IMPLEMENTATION-COMPLETE.md#manual-testing-procedure).
 
-### RBAC Tests
-3. **Admin API** - Tests Admin-only endpoint (requires Admin role)
-4. **Graph User Lookup** - Tests multi-role endpoint (Admin, Auditor, or SvcDeskAnalyst)
+## Common Gotchas 🚨
 
-### Test Scenarios
-- **Test 1:** Sign in as Admin → Should see all sections
-- **Test 2:** Sign in as Auditor → Should see user lookup only
-- **Test 3:** Sign in as user with no roles → Should get 403 on all endpoints
-
-### Verification
-- Check browser console for role extraction logs
-- Check Network tab for `X-User-Roles` and `X-Graph-Token` headers
-- Verify backend logs in Azure Portal (Function App → Log stream)
-
-## Configuration
-
-### Static Web App Configuration (`webapp/staticwebapp.config.json`)
-
-Key configurations:
-- **Authentication:** Azure AD custom identity provider with ID360 app registration
-- **Routes:** All routes require authentication except `/redirect.html` and `/.auth/*`
-- **Navigation Fallback:** Excludes `/redirect.html` (CRITICAL for MSAL)
-- **CSP Headers:** Allows MSAL.js CDN and Azure AD login endpoints
-- **401 Redirect:** Automatically redirects to `/.auth/login/aad`
-
-**Important:** Route-level RBAC is NOT used. All API routes allow `authenticated` role, and actual role checking happens in backend functions.
-
-### Azure AD App Registration
-
-Required configuration:
-- **Redirect URIs:** `https://happy-ocean-02b2c0403.3.azurestaticapps.net/redirect.html`
-- **Token Configuration:** Include `roles` claim in ID token
-- **API Permissions:** `User.Read` (delegated), `User.Read.All` (application)
-- **App Roles:** Admin, Auditor, SvcDeskAnalyst defined
-- **Expose API:** Optional scope for custom scenarios
-
-### Function App Settings
-
-Required app settings:
-- `AZURE_CLIENT_ID` - ID360 app registration client ID
-- `AZURE_CLIENT_SECRET` - Client secret for OBO flows
-- `AZURE_TENANT_ID` - Tenant ID
-
-Managed identity:
-- **User-Assigned Managed Identity (UAMI):** ID360-UAMI
-- **Permissions:** `User.Read.All` (application permission on Microsoft Graph)
+| Issue | Impact | Fix |
+|-------|--------|-----|
+| **Missing `/redirect.html` exclusion** | MSAL infinite loop | Add to `navigationFallback.exclude` |
+| **Function authLevel != anonymous** | 401 errors | Set to `"anonymous"` (SWA handles auth) |
+| **Route-level RBAC with custom roles** | Always 403 | Use backend validation only |
+| **Wrong token audience** | Graph API 403 | Token must be for `https://graph.microsoft.com` |
 
 ## Troubleshooting
 
-### Issue: Roles Not Appearing
+### Quick Diagnostics
 
-**Symptoms:**
-- User has Admin role in Azure AD but gets 403
-- Console shows only `['authenticated', 'anonymous']`
+**Roles not appearing?**
+1. Check Azure AD role assignment (Enterprise Apps → ID360 → Users)
+2. Sign out/in (roles cached in 1-hour token)
+3. Verify `X-User-Roles` header in Network tab
 
-**Solutions:**
-1. Check role assignment in Azure Portal: Enterprise Applications → ID360 → Users and groups
-2. Sign out and back in (roles are in token, which has 1-hour expiration)
-3. Check `X-User-Roles` header in Network tab
-4. Verify backend logs show "Found X-User-Roles header from frontend"
-
-### Issue: MSAL Redirect Loop
-
-**Symptoms:**
-- Infinite redirect between app and Azure AD
-- URL fragment with `#code=...` gets stripped
-
-**Solutions:**
+**MSAL redirect loop?**
 1. Verify `/redirect.html` exists and is deployed
-2. Check `navigationFallback.exclude` includes `/redirect.html`
-3. Ensure redirect URI in Azure AD matches exactly: `https://{your-swa}/redirect.html`
-4. Clear browser cache and sessionStorage
+2. Check Azure AD redirect URI matches exactly
+3. Clear browser cache + sessionStorage
 
-### Issue: Graph API 403 Forbidden
+**Graph API 403?**
+1. Decode token at https://jwt.ms - check `aud` and `scp`
+2. Verify user has delegated permissions
+3. Check admin consent granted
 
-**Symptoms:**
-- Graph API returns 403 even with valid token
-- Works with UAMI but fails with delegated
-
-**Solutions:**
-1. Check token audience: Should be `https://graph.microsoft.com`
-2. Verify user has required Graph permissions (e.g., `User.Read`)
-3. Check admin consent for delegated permissions
-4. Decode token at https://jwt.ms to verify scopes
-
-### Issue: Function Returns 401/403
-
-**Symptoms:**
-- All API calls fail with 401 or 403
-- User is authenticated
-
-**Solutions:**
-1. Check `x-ms-client-principal` header exists (view backend logs)
-2. Verify function.json has `"authLevel": "anonymous"` (SWA handles auth)
-3. Check staticwebapp.config.json routes allow `["authenticated"]`
-4. Ensure Function App is properly linked to SWA
-
-### Debugging Tips
-
-**Frontend:**
-- Open browser console (F12) to see role extraction logs
-- Check Network tab for custom headers: `X-User-Roles`, `X-Graph-Token`
-- Visit `/.auth/me` directly to see full claims
-
-**Backend:**
-- Enable Log stream in Azure Portal (Function App → Log stream)
-- Check Application Insights for detailed traces
-- Add verbose logging: `Write-Host "DEBUG: $($variableName)"`
-
-**Common Gotchas:**
-- 🚨 **redirect.html MUST be excluded from navigation fallback**
-- 🚨 **Function authLevel MUST be anonymous for SWA linked backends**
-- 🚨 **Route-level RBAC doesn't work with custom app roles in linked backends**
-- 🚨 **Token must have correct audience for target API**
+📘 **Detailed troubleshooting:** See [Troubleshooting](RBAC-IMPLEMENTATION-COMPLETE.md#troubleshooting) section (covers 15+ scenarios).
 
 ## Documentation
 
-Comprehensive documentation is available in the project root:
-
 ### 📘 [DOCUMENTATION-DELEGATED-AUTH-SOLUTION.md](DOCUMENTATION-DELEGATED-AUTH-SOLUTION.md)
-**1,491 lines** | Complete guide to delegated Microsoft Graph authentication in SWA
+**1,491 lines** - Complete delegated Microsoft Graph authentication guide
 
-**Covers:**
-- Why SWA's built-in auth doesn't work for delegated Graph calls
-- MSAL.js implementation with dedicated redirect page pattern
-- URL fragment stripping issues and solutions
-- Complete code examples and testing procedures
-- Token passing strategy (`X-Graph-Token` header)
-- On-Behalf-Of (OBO) flow attempts and why they failed
+**Key sections:**
+- [Root Cause Analysis](DOCUMENTATION-DELEGATED-AUTH-SOLUTION.md#root-cause-analysis) - Why SWA's auth doesn't work for Graph
+- [URL Stripping Discovery](DOCUMENTATION-DELEGATED-AUTH-SOLUTION.md#phase-5-url-stripping-discovery) - The redirect.html solution
+- [Implementation Details](DOCUMENTATION-DELEGATED-AUTH-SOLUTION.md#implementation-details) - Complete code examples
+- [Key Learnings](DOCUMENTATION-DELEGATED-AUTH-SOLUTION.md#key-learnings) - 8 critical lessons learned
 
-**Key Learning:** SWA's EasyAuth is for protecting routes, not for downstream API authentication.
+**TL;DR:** SWA's EasyAuth protects routes but can't acquire delegated tokens. Use MSAL.js + dedicated redirect page.
 
 ### 📘 [RBAC-IMPLEMENTATION-COMPLETE.md](RBAC-IMPLEMENTATION-COMPLETE.md)
-**2,101 lines** | Complete guide to role-based access control in SWA linked backends
+**2,101 lines** - Complete RBAC implementation for SWA linked backends
 
-**Covers:**
-- Azure platform limitation: SWA linked backends don't receive full claims array
-- Workaround solution: Frontend extracts roles from `/.auth/me` → custom header
-- Security analysis and threat modeling
-- Complete frontend and backend implementation
-- RBAC vs MSAL dependencies (they're independent!)
-- How to add new roles and functions
-- Testing procedures and troubleshooting
+**Key sections:**
+- [RBAC vs MSAL](RBAC-IMPLEMENTATION-COMPLETE.md#rbac-vs-msal-understanding-dependencies) - They're independent!
+- [The Platform Limitation](RBAC-IMPLEMENTATION-COMPLETE.md#the-platform-limitation) - Why custom header is needed
+- [Security Analysis](RBAC-IMPLEMENTATION-COMPLETE.md#security-analysis) - Threat modeling
+- [Adding New Roles](RBAC-IMPLEMENTATION-COMPLETE.md#appendix-b-adding-new-roles) - Step-by-step guide
 
-**Key Learning:** Custom header workaround is secure because SWA validates all requests.
+**TL;DR:** SWA linked backends don't get full claims array. Frontend extracts roles from `/.auth/me` → passes via `X-User-Roles` header.
 
 ### 📘 [RISKS-AND-MITIGATIONS.md](RISKS-AND-MITIGATIONS.md)
 Comprehensive security risk analysis
 
 **Covers:**
-- Token leakage risks
-- Session security
+- Token leakage scenarios
+- Session hijacking mitigations
 - RBAC bypass attempts
-- Monitoring and compliance requirements
+- Monitoring requirements
 
 ## Related Projects
 
-This is a **proof-of-concept** project. Lessons learned are being applied to:
+This POC project feeds into:
 - **ID360** - Production identity management tool
+
+Patterns proven here are being applied to production systems.
 
 ## Contributing
 
-This is an internal testing/documentation project. For questions or issues:
-1. Review the comprehensive documentation first
-2. Check Function App logs in Azure Portal
-3. Compare working patterns here with production implementations
+This is an internal testing/documentation project.
+
+**For questions:**
+1. Check the [comprehensive documentation](#documentation) first
+2. Review Function App logs in Azure Portal
+3. Compare code patterns between this POC and production
 
 ## License
 
 Internal NewDay use only.
-
