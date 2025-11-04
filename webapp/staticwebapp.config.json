@@ -1,21 +1,5 @@
 {
   "$schema": "https://json.schemastore.org/staticwebapp.config.json",
-  "auth": {
-    "identityProviders": {
-      "azureActiveDirectory": {
-        "userDetailsClaim": "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name",
-        "registration": {
-          "openIdIssuer": "https://login.microsoftonline.com/2a15a8b5-49d1-49bc-b63c-c7c8c87bdc57/v2.0",
-          "clientIdSettingName": "AZURE_CLIENT_ID",
-          "clientSecretSettingName": "AZURE_CLIENT_SECRET"
-        },
-        "login": {
-          "loginParameters": ["response_type=code id_token", "scope=openid profile email"]
-        }
-      }
-    },
-    "rolesSource": "/api/GetRoles"
-  },
   "routes": [
     {
       "route": "/redirect.html",
