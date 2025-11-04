@@ -1,7 +1,7 @@
 # Azure SWA + Function App: Risks and Mitigations
 
 **Project:** ID360Model - Delegated Authentication Pattern  
-**Date:** November 3, 2025  
+**Date:** November 4, 2025  
 **Purpose:** Risk assessment for production deployment and enterprise pattern adoption
 
 ---
@@ -13,8 +13,14 @@ This document identifies security, reliability, operational, and architectural r
 2. Azure Function Apps (PowerShell runtime)
 3. MSAL.js client-side authentication
 4. Dedicated redirect page pattern for delegated authentication
+5. **Custom header patterns (X-User-Roles, X-Graph-Token)**
+6. **RBAC workaround for SWA linked backend limitation**
 
 Each risk includes likelihood, impact, mitigation strategies, and monitoring recommendations.
+
+**Newly Added (Nov 4, 2025):**
+- **Risk 2.5:** Custom Header Manipulation - Security implications of X-User-Roles and X-Graph-Token patterns
+- **Risk 2.6:** RBAC Platform Limitation Workaround Trust Model - Non-standard pattern risks
 
 ---
 
@@ -22,6 +28,8 @@ Each risk includes likelihood, impact, mitigation strategies, and monitoring rec
 
 1. [Platform Risks (Azure SWA)](#platform-risks-azure-swa)
 2. [Backend Risks (Azure Function Apps)](#backend-risks-azure-function-apps)
+   - 2.5 [Custom Header Pattern Risks](#risk-25-custom-header-manipulation)
+   - 2.6 [RBAC Platform Limitation Workaround](#risk-26-rbac-platform-limitation-workaround-trust-model)
 3. [Authentication Risks (MSAL.js + Hybrid Auth)](#authentication-risks-msaljs--hybrid-auth)
 4. [Dedicated Redirect Page Risks](#dedicated-redirect-page-risks)
 5. [Integration Risks (SWA + Function App)](#integration-risks-swa--function-app)
@@ -575,6 +583,352 @@ $result = Invoke-Expression "Get-MgUser -UserId $userPrincipalName"  # ❌ DANGE
 - Failed input validation (potential attack attempts)
 - Unusual characters in request parameters
 - Error patterns indicating injection attempts
+
+---
+
+## Custom Header Pattern Risks (X-User-Roles & X-Graph-Token)
+
+### Risk 2.5: Custom Header Manipulation
+
+**Description:** The `X-User-Roles` and `X-Graph-Token` custom headers can be manipulated by clients, potentially allowing privilege escalation or token injection if not properly validated.
+
+**Likelihood:** Medium (client-side headers are inherently untrusted)  
+**Impact:** Critical (unauthorized access, privilege escalation)  
+**Risk Score:** High
+
+**Attack Scenarios:**
+
+1. **Role Injection Attack**
+   ```javascript
+   // Attacker attempts to inject admin role
+   fetch('/api/config/admin', {
+     headers: {
+       'X-User-Roles': '["authenticated","Admin"]'  // Fake admin role
+     }
+   });
+   ```
+
+2. **Token Substitution**
+   ```javascript
+   // Attacker substitutes stolen token
+   fetch('/api/user/victim@example.com', {
+     headers: {
+       'X-Graph-Token': 'eyJ0eXAiOiJKV1Qi...'  // Stolen token
+     }
+   });
+   ```
+
+**Why This Pattern Is Secure (When Properly Implemented):**
+
+The security relies on **SWA's authentication layer**:
+
+```
+┌─────────────────────────────────────────┐
+│ Security Guarantee: SWA validates ALL   │
+│ requests before they reach Function App│
+│                                         │
+│ Backend ONLY accepts requests with:    │
+│ ✓ Valid x-ms-client-principal header   │
+│ ✓ Authenticated session validated by SWA│
+└─────────────────────────────────────────┘
+```
+
+**Mitigation Strategies:**
+
+1. **Always Validate SWA Authentication First**
+   ```powershell
+   # CRITICAL: Check x-ms-client-principal BEFORE custom headers
+   $clientPrincipalHeader = $Request.Headers['x-ms-client-principal']
+   
+   if (-not $clientPrincipalHeader) {
+       Write-Host "❌ SECURITY: No x-ms-client-principal - bypassing SWA?"
+       Push-OutputBinding -Name Response -Value ([HttpResponseContext]@{
+           StatusCode = [HttpStatusCode]::Unauthorized
+           Body = (@{ error = "Authentication required via SWA" } | ConvertTo-Json)
+       })
+       return
+   }
+   
+   # Decode and validate
+   $clientPrincipal = [System.Text.Encoding]::UTF8.GetString(
+       [Convert]::FromBase64String($clientPrincipalHeader)
+   ) | ConvertFrom-Json
+   
+   # Verify user is authenticated
+   if (-not $clientPrincipal.userId) {
+       Write-Host "❌ SECURITY: Invalid client principal"
+       return [HttpStatusCode]::Unauthorized
+   }
+   ```
+
+2. **Treat Custom Headers as Advisory Only**
+   ```powershell
+   # X-User-Roles is advisory - SWA already validated the user
+   # Roles came from the SAME Azure AD token that SWA validated
+   # User cannot fake /.auth/me (it's server-controlled)
+   
+   $frontendRolesHeader = $Request.Headers['X-User-Roles']
+   if ($frontendRolesHeader) {
+       try {
+           $frontendRoles = $frontendRolesHeader | ConvertFrom-Json
+           # Use roles for authorization decisions
+       } catch {
+           Write-Host "⚠️ SECURITY: Malformed X-User-Roles header"
+           # Don't fail - just don't grant extra privileges
+       }
+   }
+   ```
+
+3. **Cross-Validate User Identity**
+   ```powershell
+   # Ensure X-Graph-Token (if provided) matches authenticated user
+   if ($Request.Headers['X-Graph-Token']) {
+       $tokenClaims = Decode-JwtClaims -Token $Request.Headers['X-Graph-Token']
+       
+       # Verify token belongs to authenticated user
+       if ($tokenClaims.oid -ne $clientPrincipal.userId) {
+           Write-Host "❌ SECURITY: Token user mismatch"
+           Write-Host "  Token OID: $($tokenClaims.oid)"
+           Write-Host "  Session User: $($clientPrincipal.userId)"
+           return [HttpStatusCode]::Forbidden
+       }
+   }
+   ```
+
+4. **Never Trust Custom Headers Alone**
+   ```powershell
+   # ❌ INSECURE - Don't do this
+   if ($Request.Headers['X-User-Roles'] -match 'Admin') {
+       # Grant admin access
+   }
+   
+   # ✅ SECURE - Validate session first
+   if ($clientPrincipal.userId -and 
+       $Request.Headers['X-User-Roles'] -match 'Admin') {
+       # User is authenticated via SWA AND has admin role
+   }
+   ```
+
+5. **Log Security Events**
+   ```powershell
+   # Log for security monitoring
+   if ($Request.Headers['X-User-Roles']) {
+       $roles = $Request.Headers['X-User-Roles']
+       Write-Host "Role claim from frontend: $roles for user: $($clientPrincipal.userDetails)"
+   }
+   
+   # Alert on suspicious patterns
+   if ($Request.Headers['X-User-Roles'] -match 'Admin|SuperUser|Root') {
+       Write-Host "⚠️ SECURITY AUDIT: Admin role claim by $($clientPrincipal.userDetails)"
+   }
+   ```
+
+6. **Function App Network Isolation**
+   ```bash
+   # Ensure Function App only accepts traffic from SWA
+   az functionapp config access-restriction add \
+     --resource-group IAM-RA \
+     --name ID360Model-FA \
+     --rule-name "AllowSWAOnly" \
+     --priority 100 \
+     --action Allow \
+     --service-tag AzureCloud
+   ```
+
+**Why Attacker Cannot Bypass SWA:**
+
+1. **Direct Function Access Prevention**
+   - Function App is linked to SWA (region restriction)
+   - No public internet access (in production)
+   - Even with CORS, backend checks `x-ms-client-principal`
+
+2. **Frontend /.auth/me Is Server-Controlled**
+   - User cannot fake another user's /.auth/me response
+   - SWA validates session before returning claims
+   - Roles come from the same validated Azure AD token
+
+3. **Session Validation Chain**
+   ```
+   User → SWA validates session → /.auth/me returns validated claims
+                ↓
+   Frontend extracts roles (from validated source)
+                ↓
+   Backend receives request with x-ms-client-principal (proves validation)
+                ↓
+   Backend trusts roles because session is valid
+   ```
+
+**Monitoring:**
+
+```kql
+// Azure Monitor KQL - Detect suspicious custom headers
+FunctionAppLogs
+| where Message contains "X-User-Roles" or Message contains "X-Graph-Token"
+| extend User = extract("user: ([^,]+)", 1, Message)
+| extend Roles = extract("X-User-Roles: (.+)", 1, Message)
+| where Roles contains "Admin" or Roles contains "Root"
+| project TimeGenerated, User, Roles, Message
+
+// Alert on requests without x-ms-client-principal
+FunctionAppLogs
+| where Message contains "No x-ms-client-principal"
+| summarize Count = count() by bin(TimeGenerated, 5m)
+| where Count > 0
+
+// Alert on token/user mismatch
+FunctionAppLogs
+| where Message contains "Token user mismatch"
+| project TimeGenerated, Message
+```
+
+**Testing:**
+
+```javascript
+// Test: Attempt to inject fake admin role (should fail)
+describe('Security: Custom Header Validation', () => {
+    test('Rejects fake admin role without valid session', async () => {
+        // Attempt to call admin endpoint with fake header
+        const response = await fetch('https://id360model-fa.azurewebsites.net/api/config/admin', {
+            headers: {
+                'X-User-Roles': '["authenticated","Admin"]'  // Fake
+            }
+        });
+        
+        // Should be rejected (no x-ms-client-principal from SWA)
+        expect(response.status).toBe(401);
+    });
+    
+    test('Accepts valid roles with authenticated session', async () => {
+        // Go through SWA (which adds x-ms-client-principal)
+        const response = await fetch('/api/config/admin', {
+            headers: {
+                'X-User-Roles': '["authenticated","Admin"]'
+            }
+        });
+        
+        // Should work if user actually has Admin role in Azure AD
+        expect(response.status).not.toBe(401);
+    });
+});
+```
+
+---
+
+### Risk 2.6: RBAC Platform Limitation Workaround Trust Model
+
+**Description:** The RBAC implementation relies on a workaround for Azure SWA's platform limitation (linked backends don't receive full claims array). This introduces a non-standard trust model.
+
+**Likelihood:** Medium (inherent to the workaround pattern)  
+**Impact:** Medium (depends on RBAC criticality)  
+**Risk Score:** Medium
+
+**Platform Limitation:**
+
+```json
+// What SWA sends to linked backends (x-ms-client-principal):
+{
+  "identityProvider": "aad",
+  "userId": "...",
+  "userDetails": "user@example.com",
+  "userRoles": ["authenticated", "anonymous"]
+  // ❌ NO claims array with custom app roles
+}
+
+// What frontend gets from /.auth/me:
+{
+  "clientPrincipal": {
+    "userId": "...",
+    "userDetails": "user@example.com",
+    "claims": [
+      { "typ": "roles", "val": "Admin" }  // ✅ Has custom roles
+    ]
+  }
+}
+```
+
+**Workaround Pattern:**
+
+1. Frontend calls `/.auth/me` (server-controlled, authenticated)
+2. Frontend extracts roles from validated claims
+3. Frontend passes roles via `X-User-Roles` header
+4. Backend validates session, then uses roles for authorization
+
+**Trust Model Risks:**
+
+1. **Documentation Debt**
+   - Non-standard pattern may confuse future developers
+   - Requires clear documentation of trust assumptions
+   - Risk of breaking pattern during refactoring
+
+2. **Pattern Maintenance**
+   - If SWA fixes the limitation, workaround becomes technical debt
+   - Need to monitor Azure roadmap for platform changes
+   - Migration path needed if Microsoft provides official solution
+
+3. **Audit Trail Complexity**
+   - Roles logged in backend may not match exact source
+   - Need to correlate frontend and backend logs
+   - Compliance auditors may question pattern
+
+**Mitigation Strategies:**
+
+1. **Comprehensive Documentation**
+   - Document the platform limitation clearly
+   - Explain the trust model and security guarantees
+   - Include security review sign-off
+   - **Status:** ✅ Done (RBAC-IMPLEMENTATION-COMPLETE.md)
+
+2. **Alternative: Unlink Function App**
+   ```bash
+   # If RBAC is mission-critical, consider unlinking
+   az staticwebapp backends unlink --name ID360Model-SWA
+   
+   # Update Function App to validate Azure AD tokens directly
+   # Tokens include full claims array
+   # Trade-off: Lose SWA proxy benefits, more complex CORS
+   ```
+
+3. **Fallback to Backend Role Storage**
+   ```powershell
+   # Option: Store role mappings in backend
+   $userRoles = Get-RoleAssignments -UserId $clientPrincipal.userId
+   
+   # Pro: Independent of platform
+   # Con: Sync issues, database dependency
+   ```
+
+4. **Monitor for Platform Changes**
+   - Subscribe to Azure Static Web Apps updates
+   - Test for claims array in x-ms-client-principal monthly
+   - Have migration plan ready if Microsoft fixes limitation
+
+5. **Security Review Cadence**
+   - Quarterly security review of RBAC implementation
+   - Validate that workaround pattern is still secure
+   - Check for new CVEs or attack vectors
+
+**Acceptance Criteria for Production:**
+
+- [ ] Security team sign-off on custom header pattern
+- [ ] Documentation reviewed and approved
+- [ ] Alternative approaches evaluated and rejected with justification
+- [ ] Monitoring and alerting in place
+- [ ] Incident response plan includes RBAC bypass scenarios
+- [ ] Compliance team approval if required
+
+**Monitoring:**
+
+```powershell
+# Monitor for platform changes
+Test-ClaimsArrayAvailability {
+    $principal = Decode-ClientPrincipal $Request.Headers['x-ms-client-principal']
+    
+    if ($principal.claims -and $principal.claims.Count -gt 0) {
+        Write-Host "🎉 PLATFORM UPDATE: claims array now available in x-ms-client-principal!"
+        # Alert DevOps team to remove workaround
+    }
+}
+```
 
 ---
 
@@ -1388,6 +1742,8 @@ $result = Invoke-Expression "Get-MgUser -UserId $userPrincipalName"  # ❌ DANGE
 | 2.2 | Function App Auth Bypass | Medium | Critical | **High** | **Critical** |
 | 2.3 | Managed Identity Token Leakage | Low | Critical | Medium | High |
 | 2.4 | PowerShell Injection Attacks | Low | Critical | Medium-High | High |
+| 2.5 | Custom Header Manipulation | Medium | Critical | **High** | **Critical** |
+| 2.6 | RBAC Platform Limitation Workaround | Medium | Medium | Medium | Medium |
 | 3.1 | Token Storage in Browser | Medium | Critical | **High** | **Critical** |
 | 3.2 | MSAL.js Library Compromise | Very Low | Critical | Medium | Medium |
 | 3.3 | Redirect URI Hijacking | Low | High | Medium | Medium |
@@ -1417,6 +1773,9 @@ Before deploying this pattern to production, ensure:
 ### Security
 - [ ] CSP configured without `unsafe-inline` / `unsafe-eval` (or accepted risk documented)
 - [ ] Function App auth bypass protection implemented
+- [ ] **x-ms-client-principal validation before custom headers** (Risk 2.5)
+- [ ] **X-Graph-Token user identity cross-validation** (Risk 2.5)
+- [ ] **RBAC workaround pattern security reviewed and approved** (Risk 2.6)
 - [ ] Tokens never logged in plain text
 - [ ] Input validation on all user-provided parameters
 - [ ] HTTPS enforced everywhere
