@@ -35,17 +35,9 @@
     "exclude": ["/api/*", "/.auth/*", "/redirect.html"]
   },
   "responseOverrides": {
-    "400": {
-      "statusCode": 400,
-      "redirect": "/index.html"
-    },
     "401": {
       "statusCode": 302,
       "redirect": "/.auth/login/aad"
-    },
-    "404": {
-      "rewrite": "/index.html",
-      "statusCode": 200
     }
   },
   "globalHeaders": {
