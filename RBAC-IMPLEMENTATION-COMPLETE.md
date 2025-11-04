@@ -9,14 +9,15 @@
 ## Table of Contents
 
 1. [Executive Summary](#executive-summary)
-2. [Architecture Overview](#architecture-overview)
-3. [The Platform Limitation](#the-platform-limitation)
-4. [The Workaround Solution](#the-workaround-solution)
-5. [Implementation Details](#implementation-details)
-6. [Security Analysis](#security-analysis)
-7. [Testing and Verification](#testing-and-verification)
-8. [Troubleshooting](#troubleshooting)
-9. [Code References](#code-references)
+2. [RBAC vs. MSAL: Understanding Dependencies](#rbac-vs-msal-understanding-dependencies)
+3. [Architecture Overview](#architecture-overview)
+4. [The Platform Limitation](#the-platform-limitation)
+5. [The Workaround Solution](#the-workaround-solution)
+6. [Implementation Details](#implementation-details)
+7. [Security Analysis](#security-analysis)
+8. [Testing and Verification](#testing-and-verification)
+9. [Troubleshooting](#troubleshooting)
+10. [Code References](#code-references)
 
 ---
 
@@ -36,6 +37,170 @@ Successfully implemented RBAC despite a fundamental Azure platform limitation wh
 - **Admin:** Full administrative access
 - **Auditor:** Read-only audit access
 - **SvcDeskAnalyst:** Service desk operations access
+
+**Note:** These are the three roles currently implemented and tested. The system supports unlimited custom roles - see Appendix B for how to add additional roles.
+
+---
+
+## RBAC vs. MSAL: Understanding Dependencies
+
+### Critical Clarification
+
+**RBAC (this document) and MSAL.js (delegated Graph calls) are SEPARATE, INDEPENDENT features.**
+
+### RBAC Does NOT Require MSAL
+
+**RBAC uses:**
+- ✅ SWA's built-in authentication (EasyAuth)
+- ✅ Azure AD ID token with roles claim
+- ✅ `/.auth/me` endpoint for role extraction
+- ❌ **No MSAL.js library needed**
+
+**MSAL.js is ONLY used for:**
+- ✅ Delegated Microsoft Graph API calls
+- ✅ Acquiring Graph access tokens on behalf of signed-in user
+- ✅ Calling Graph with user's permissions (not app permissions)
+
+### Feature Dependency Matrix
+
+| Feature | Needs MSAL? | Needs SWA Auth? | Needs Azure AD Roles? |
+|---------|-------------|-----------------|----------------------|
+| User Sign-in | ❌ No | ✅ Yes | ❌ No |
+| RBAC UI (show/hide sections) | ❌ No | ✅ Yes | ✅ Yes |
+| RBAC Backend Validation | ❌ No | ✅ Yes | ✅ Yes |
+| Delegated Graph API Calls | ✅ **Yes** | ✅ Yes | ❌ No |
+| App-Only Graph Calls (UAMI) | ❌ No | ❌ No | ❌ No |
+
+### Two Independent Features in ID360Model
+
+#### Feature 1: RBAC (This Document)
+**Purpose:** Control access to features based on Azure AD app roles
+
+**Dependencies:**
+- SWA built-in authentication
+- Azure AD app registration with app roles defined
+- Custom `X-User-Roles` header pattern (our workaround)
+
+**What it provides:**
+- Role extraction: `["authenticated", "anonymous", "Admin"]`
+- Frontend: Show/hide UI sections based on roles
+- Backend: Validate access before executing functions
+
+**Code location:**
+- Frontend: `fetchUserInfo()` in `index.html`
+- Backend: Role validation in all `run.ps1` files
+
+#### Feature 2: Delegated Microsoft Graph Calls
+**Purpose:** Call Microsoft Graph API on behalf of the signed-in user
+
+**Dependencies:**
+- MSAL.js library (`@azure/msal-browser`)
+- Dedicated redirect page (`/redirect.html`)
+- `X-Graph-Token` custom header
+
+**What it provides:**
+- Acquire Graph access token with user's permissions
+- Call Graph APIs with delegated permissions (e.g., `User.Read`)
+- Enables operations like "lookup this user as me"
+
+**Code location:**
+- Frontend: `acquireGraphToken()` in `index.html`
+- Backend: Token extraction in `GetUser/run.ps1`
+- Documentation: `DOCUMENTATION-DELEGATED-AUTH-SOLUTION.md`
+
+### Current Implementation Usage
+
+**Admin API Endpoint (`/api/config/admin`):**
+- ✅ Uses RBAC for access control
+- ❌ Does NOT use MSAL
+- Returns config data only to Admin role users
+
+**Graph User Lookup Endpoint (`/api/user/{upn}`):**
+- ✅ Uses RBAC for access control (Admin, Auditor, or SvcDeskAnalyst)
+- ✅ Uses MSAL token for delegated Graph call
+- ✅ Falls back to UAMI (app-only) if no MSAL token
+
+### Can You Remove MSAL?
+
+**YES, if you don't need delegated Graph calls!**
+
+**To remove MSAL.js:**
+
+1. **Delete from `index.html`:**
+```javascript
+// Remove MSAL library script tag
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.3/lib/msal-browser.min.js"></script>
+
+// Remove MSAL configuration
+const msalConfig = { ... };
+const msalInstance = ...;
+
+// Remove MSAL functions
+acquireGraphToken() { ... }
+initializeMSAL() { ... }
+```
+
+2. **Update `makeRequest()` in `index.html`:**
+```javascript
+// Remove this section:
+if (graphToken) {
+    options.headers['X-Graph-Token'] = graphToken;
+}
+```
+
+3. **Update backend functions:**
+```powershell
+# GetUser/run.ps1 - Remove delegated token handling
+# Keep only UAMI token acquisition
+```
+
+4. **Delete `redirect.html`:**
+```bash
+rm webapp/redirect.html
+```
+
+5. **Update `staticwebapp.config.json`:**
+```json
+// Remove from navigationFallback.exclude:
+"/redirect.html"
+
+// Remove from script-src in CSP:
+"https://cdn.jsdelivr.net"  // (if only used for MSAL)
+```
+
+**Result after removal:**
+- ✅ RBAC continues to work perfectly
+- ✅ Admin sections still show/hide based on roles
+- ✅ Backend role validation still works
+- ❌ Delegated Graph calls fail (fall back to UAMI/app-only)
+- ✅ Simpler codebase (less JavaScript, no redirect page)
+
+### Can You Add MSAL Later?
+
+**YES, MSAL can be added at any time!**
+
+RBAC is the foundation. MSAL is an optional enhancement for delegated Graph calls.
+
+**Implementation order:**
+1. ✅ Implement RBAC (this document) ← Foundation
+2. ✅ Test role-based access control
+3. ✅ Add MSAL if delegated Graph calls are needed ← Enhancement
+4. ✅ Test Graph operations
+
+### Why We Have Both
+
+In the ID360Model project, we implemented both because:
+
+1. **RBAC:** Control who can access admin functions
+2. **MSAL:** Enable user lookup operations with delegated permissions
+3. **Combined:** Admin users can look up other users with their own permissions
+
+**Example scenario:**
+- User signs in (SWA Auth)
+- User has Admin role (RBAC)
+- User searches for another user (MSAL + Graph)
+- Backend validates Admin role (RBAC) AND uses user's Graph token (MSAL)
+- Graph API call succeeds with delegated permissions
 
 ---
 
