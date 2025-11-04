@@ -13,10 +13,17 @@
     </div>
 
     <script>
-        console.log('=== REDIRECT PAGE LOADED ===');
+        console.log('=== REDIRECT.HTML PAGE LOADED ===');
+        console.log('=== THIS IS THE DEDICATED REDIRECT PAGE ===');
         console.log('Current URL:', window.location.href);
         console.log('Has hash?', window.location.hash ? 'YES - ' + window.location.hash.substring(0, 50) : 'NO');
         console.log('Has query?', window.location.search ? 'YES - ' + window.location.search.substring(0, 50) : 'NO');
+        console.log('Full hash (if present):', window.location.hash);
+        console.log('Full query (if present):', window.location.search);
+        
+        // Immediately store a flag so we know this page loaded
+        sessionStorage.setItem('redirectPageVisited', 'true');
+        sessionStorage.setItem('redirectPageTime', new Date().toISOString());
 
         // MSAL Configuration (must match main page)
         const msalConfig = {

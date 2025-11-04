@@ -297,6 +297,7 @@ The `navigationFallback` feature in SWA is designed to enable Single-Page Applic
 ```
 
 **What it does:**
+
 1. **Intercepts** all requests that would return 404 (file not found)
 2. **Rewrites** them server-side to `/index.html` (before JavaScript loads)
 3. **Enables** client-side routing frameworks (React Router, Vue Router, Angular routing)
@@ -304,6 +305,7 @@ The `navigationFallback` feature in SWA is designed to enable Single-Page Applic
 
 **Why it strips URLs:**
 The rewrite happens at the **server level**, where:
+
 - HTTP servers typically ignore URL fragments (they're client-side only)
 - The rewrite operation creates a "clean" request to `/index.html`
 - By the time your JavaScript executes, `window.location.hash` and `window.location.search` are already empty
@@ -311,6 +313,7 @@ The rewrite happens at the **server level**, where:
 #### The OAuth Redirect Flow Collision
 
 When Azure AD redirects back after authentication, the URL looks like:
+
 ```
 https://your-app.com/#code=abc123&state=xyz789&session_state=def456
                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -329,18 +332,24 @@ https://your-app.com/#code=abc123&state=xyz789&session_state=def456
 8. **Token acquisition fails silently**
 
 **Evidence from our debugging:**
+
 ```javascript
-console.log('Current URL:', window.location.href);
+console.log("Current URL:", window.location.href);
 // Output: https://happy-ocean-02b2c0403.3.azurestaticapps.net/
-console.log('Has hash?', window.location.hash ? 'YES' : 'NO');
+console.log("Has hash?", window.location.hash ? "YES" : "NO");
 // Output: Has hash? NO
-console.log('handleRedirectPromise returned:', response ? 'RESPONSE OBJECT' : 'NULL');
+console.log(
+  "handleRedirectPromise returned:",
+  response ? "RESPONSE OBJECT" : "NULL"
+);
 // Output: handleRedirectPromise returned: NULL
 
 // But we stored a flag before redirect:
-console.log('🔄 MSAL redirect was attempted at:', redirectTime);
+console.log("🔄 MSAL redirect was attempted at:", redirectTime);
 // Output: 🔄 MSAL redirect was attempted at: 2025-11-03T13:52:48.314Z
-console.log('🔄 But URL has no hash/query - redirect response may have been stripped!');
+console.log(
+  "🔄 But URL has no hash/query - redirect response may have been stripped!"
+);
 ```
 
 This proved the redirect occurred successfully, but the response was lost during SWA's URL processing.
@@ -352,6 +361,7 @@ This proved the redirect occurred successfully, but the response was lost during
 **Idea:** Configure navigation fallback to exclude URLs with hash fragments
 
 **Attempted Configuration:**
+
 ```json
 "navigationFallback": {
   "exclude": ["/#*", "/?code=*"]  // ❌ Not supported
@@ -359,6 +369,7 @@ This proved the redirect occurred successfully, but the response was lost during
 ```
 
 **Why it fails:**
+
 - The `exclude` array only supports **static path prefixes**, not pattern matching
 - Valid examples: `"/api/*"`, `"/.auth/*"`, `"/redirect.html"`
 - Invalid examples: `"/#*"`, `"/?code=*"`, `"/*?*"`
@@ -373,6 +384,7 @@ This proved the redirect occurred successfully, but the response was lost during
 **Idea:** Remove the `navigationFallback` configuration
 
 **Configuration:**
+
 ```json
 {
   "routes": [...],
@@ -381,6 +393,7 @@ This proved the redirect occurred successfully, but the response was lost during
 ```
 
 **Why it fails:**
+
 - **Breaks SPA routing:** Direct navigation to `/users/123` returns 404
 - **Breaks page refresh:** Refreshing on any route (except `/`) returns 404
 - **Breaks deep linking:** Shared links to specific routes don't work
@@ -395,19 +408,22 @@ This proved the redirect occurred successfully, but the response was lost during
 **Idea:** Use `acquireTokenPopup()` instead of `acquireTokenRedirect()`
 
 **Code Attempted:**
+
 ```javascript
 const response = await msalInstance.acquireTokenPopup({
-    scopes: ['User.Read']
+  scopes: ["User.Read"],
 });
 ```
 
 **Why it failed (in this environment):**
+
 - **Popup rendered entire SWA:** The popup window loaded the full SWA page (with EasyAuth)
 - **EasyAuth in popup:** Created authentication loop (SWA auth inside MSAL popup)
 - **Security error:** `BrowserAuthError: block_nested_popups` - Browser blocked nested authentication attempts
 - **UX issues:** Popup blockers, mobile incompatibility, poor user experience
 
 **When popup flow works:**
+
 - App without SWA EasyAuth (no authentication nesting)
 - Simple authentication pages
 - Desktop-only applications
@@ -421,23 +437,25 @@ const response = await msalInstance.acquireTokenPopup({
 **Idea:** Switch to OAuth 2.0 Implicit Grant flow (deprecated)
 
 **Configuration:**
+
 ```javascript
 const msalConfig = {
-    auth: {
-        clientId: '...',
-        authority: '...'
-    },
-    cache: {
-        cacheLocation: 'sessionStorage'
-    }
-    // No system.allowRedirectInIframe needed for implicit
+  auth: {
+    clientId: "...",
+    authority: "...",
+  },
+  cache: {
+    cacheLocation: "sessionStorage",
+  },
+  // No system.allowRedirectInIframe needed for implicit
 };
 ```
 
 **Why it fails:**
+
 - **Still uses hash fragments:** Implicit flow returns tokens in URL hash (`#access_token=...`)
 - **Same stripping issue:** SWA navigation fallback strips hash fragments regardless of content
-- **Security concerns:** 
+- **Security concerns:**
   - Tokens visible in browser history
   - Tokens accessible to JavaScript (XSS vulnerability)
   - No refresh tokens (worse UX)
@@ -453,6 +471,7 @@ const msalConfig = {
 **Idea:** Create a separate page specifically for OAuth callbacks, excluded from navigation fallback
 
 **Configuration:**
+
 ```json
 "navigationFallback": {
   "rewrite": "/index.html",
@@ -461,6 +480,7 @@ const msalConfig = {
 ```
 
 **Why it works:**
+
 - ✅ **Hash fragments preserved:** `/redirect.html` is explicitly excluded, served as-is
 - ✅ **No URL rewriting:** SWA serves the actual file without processing
 - ✅ **MSAL can process response:** `window.location.hash` contains the OAuth code
@@ -480,6 +500,7 @@ From [MSAL.js documentation](https://github.com/AzureAD/microsoft-authentication
 ### Is This "By Design"?
 
 **SWA Navigation Fallback:**
+
 - ✅ **Intended purpose:** Enable SPA frameworks with client-side routing
 - ✅ **Design trade-off:** Simplify server configuration at the cost of URL fragment handling
 - ❌ **Not designed for:** Preserving OAuth callback parameters in URLs
@@ -487,6 +508,7 @@ From [MSAL.js documentation](https://github.com/AzureAD/microsoft-authentication
 **Could Microsoft Fix This?**
 
 **Hypothetical Feature 1:** Global hash/query preservation
+
 ```json
 "navigationFallback": {
   "rewrite": "/index.html",
@@ -494,17 +516,21 @@ From [MSAL.js documentation](https://github.com/AzureAD/microsoft-authentication
   "preserveHashAndQuery": true  // ← Doesn't exist
 }
 ```
+
 **Problem:** Would break scenarios where you intentionally want clean URLs.
 
 **Hypothetical Feature 2:** Pattern-based exclusions
+
 ```json
 "navigationFallback": {
   "exclude": ["/api/*", "/#code=*", "/?state=*"]  // ← Not supported
 }
 ```
+
 **Problem:** Complex to implement, performance overhead for every request, difficult to configure correctly.
 
 **Hypothetical Feature 3:** Per-route URL preservation
+
 ```json
 "routes": [
   {
@@ -514,6 +540,7 @@ From [MSAL.js documentation](https://github.com/AzureAD/microsoft-authentication
   }
 ]
 ```
+
 **Problem:** Would require significant platform changes, unclear edge cases.
 
 **Reality:** These features don't exist, and even if they did, the dedicated redirect page pattern is still considered best practice by Microsoft for MSAL.js applications.
